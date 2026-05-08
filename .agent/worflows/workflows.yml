@@ -1,0 +1,22 @@
+name: ZonData Incident Pipeline
+
+workflows:
+  news_monitor:
+    description: "Escaneo de medios sanjuaninos para detección de eventos"
+    trigger: "Schedule (Every 15 mins)"
+    tasks:
+      - run: python3 scrapers/media_monitor.py
+      - action: "Extract geo-coordinates from news body"
+      - post_to: "/api/incidents"
+
+  data_cleanup:
+    description: "Mantenimiento de la frescura del mapa"
+    rules:
+      - "Ocultar incidentes de tránsito después de 6 horas"
+      - "Archivar reportes climáticos después de 24 horas"
+
+  brand_compliance:
+    description: "Asegurar consistencia visual"
+    checks:
+      - "Verificar que el logo ZonData (naranja/azul) esté presente"
+      - "Convertir cualquier imagen subida a formato .jpg estático"
