@@ -38,6 +38,25 @@ class IncidentController extends Controller
             ['name' => ucfirst($validated['etiqueta'])]
         );
 
+        // Prevenir duplicados (Misma URL o Mismo Título)
+        if (!empty($validated['fuente_url'])) {
+            $existing = Incident::where('source_url', $validated['fuente_url'])->first();
+            if ($existing) {
+                return response()->json([
+                    'message' => 'Incidente duplicado (URL ya registrada)',
+                    'incident' => $existing
+                ], 200);
+            }
+        }
+
+        $existingTitle = Incident::where('title', $validated['titulo'])->first();
+        if ($existingTitle) {
+            return response()->json([
+                'message' => 'Incidente duplicado (Título ya registrado)',
+                'incident' => $existingTitle
+            ], 200);
+        }
+
         $incident = Incident::create([
             'category_id' => $category->id,
             'title' => $validated['titulo'],

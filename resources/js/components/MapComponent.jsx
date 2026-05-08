@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Menu, X, Wind, Zap, Car, AlertTriangle } from 'lucide-react';
+import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 
 // Fix for default Leaflet icons in React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -16,10 +16,10 @@ L.Icon.Default.mergeOptions({
 const createCustomIcon = (type) => {
     // Determine color based on rules: Zonda (Wind/Fire) = Orange, Data (Tech/Services) = Blue, etc.
     let color = '#002D62'; // Tech Blue default
-    if (['viento', 'clima', 'incendio', 'siniestro'].includes(type.toLowerCase())) {
-        color = '#F28C28'; // Zonda Orange
-    } else if (['accidente', 'corte'].includes(type.toLowerCase())) {
-        color = '#E74C3C'; // Red Alert
+    if (['arboles', 'corte', 'incendio', 'techo'].includes(type.toLowerCase())) {
+        color = '#F28C28'; // Viento: Orange
+    } else if (['choque', 'vuelco', 'atropello'].includes(type.toLowerCase())) {
+        color = '#DC2626'; // Accidente: Red Alert
     }
 
     const svgIcon = `
@@ -41,6 +41,39 @@ const MapComponent = () => {
     const [incidents, setIncidents] = useState([]);
     // Abrir por defecto en escritorio, cerrado en móvil
     const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+    
+    // Estados para Filtros
+    const [windAccordionOpen, setWindAccordionOpen] = useState(true);
+    const [accidentAccordionOpen, setAccidentAccordionOpen] = useState(false);
+    const [activeFilters, setActiveFilters] = useState([]);
+
+    // Definir las categorías
+    const windCategories = [
+        { id: 'arboles', name: '🌳 Caída de Árboles / Ramas' },
+        { id: 'corte', name: '⚡ Cortes de Luz' },
+        { id: 'incendio', name: '🔥 Incendios' },
+        { id: 'techo', name: '💨 Voladuras / Otros' }
+    ];
+
+    const accidentCategories = [
+        { id: 'choque', name: '💥 Choque / Colisión' },
+        { id: 'vuelco', name: '🔄 Vuelco' },
+        { id: 'atropello', name: '🚶 Atropello / Peatón' }
+    ];
+
+    const toggleFilter = (categoryId) => {
+        setActiveFilters(prev => 
+            prev.includes(categoryId) 
+                ? prev.filter(f => f !== categoryId) 
+                : [...prev, categoryId]
+        );
+    };
+
+    const filteredIncidents = incidents.filter(incident => {
+        if (activeFilters.length === 0) return true;
+        // Check if the incident's category slug matches any of the active filters
+        return activeFilters.includes(incident.category?.slug);
+    });
 
     // Center on entire San Juan Province
     const position = [-30.8654, -68.8895];
@@ -76,29 +109,104 @@ const MapComponent = () => {
                     <img src="/images/logo.jpeg" alt="ZonData Logo" className="w-full h-auto object-contain" />
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-4 bg-[#F4F4F4]">
-                    <h2 className="font-semibold text-gray-700 mb-4 uppercase text-sm">Eventos Activos ({incidents.length})</h2>
-                    
-                    {incidents.length === 0 ? (
-                        <p className="text-sm text-gray-500 italic">No hay incidentes reportados en este momento.</p>
-                    ) : (
-                        <div className="space-y-3">
-                            {incidents.map(incident => (
-                                <div key={incident.id} className="bg-white p-3 rounded shadow-sm border-l-4" style={{ borderColor: ['viento', 'clima', 'incendio', 'siniestro'].includes(incident.category?.slug) ? '#F28C28' : '#002D62' }}>
-                                    <h3 className="font-bold text-[#002D62] text-sm">{incident.title}</h3>
-                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
-                                    <div className="mt-2 flex items-center justify-between">
-                                        <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
-                                            {incident.category?.name || 'Evento'}
-                                        </span>
-                                        <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
-                                            Fuente: {incident.source_name}
-                                        </a>
-                                    </div>
-                                </div>
-                            ))}
+                <div className="flex-1 overflow-y-auto bg-[#F4F4F4]">
+                    {/* Acordeón de Viento */}
+                    <div className="bg-white border-b border-gray-200">
+                        <button 
+                            className="w-full p-4 flex items-center justify-between font-bold text-[#002D62] hover:bg-gray-50 transition-colors"
+                            onClick={() => setWindAccordionOpen(!windAccordionOpen)}
+                        >
+                            <div className="flex items-center gap-2">
+                                <span>🌪️ Incidentes por Viento</span>
+                            </div>
+                            {windAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        
+                        {windAccordionOpen && (
+                            <div className="px-4 pb-4 space-y-2">
+                                {windCategories.map(cat => (
+                                    <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 text-[#F28C28] rounded border-gray-300 focus:ring-[#F28C28]"
+                                            checked={activeFilters.includes(cat.id)}
+                                            onChange={() => toggleFilter(cat.id)}
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">{cat.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Acordeón de Accidentes */}
+                    <div className="bg-white border-b border-gray-200">
+                        <button 
+                            className="w-full p-4 flex items-center justify-between font-bold text-[#002D62] hover:bg-gray-50 transition-colors"
+                            onClick={() => setAccidentAccordionOpen(!accidentAccordionOpen)}
+                        >
+                            <div className="flex items-center gap-2">
+                                <span>🚗 Tránsito y Accidentes</span>
+                            </div>
+                            {accidentAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        
+                        {accidentAccordionOpen && (
+                            <div className="px-4 pb-4 space-y-2">
+                                {accidentCategories.map(cat => (
+                                    <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-600"
+                                            checked={activeFilters.includes(cat.id)}
+                                            onChange={() => toggleFilter(cat.id)}
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">{cat.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="p-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="font-semibold text-gray-700 uppercase text-sm">Eventos Activos</h2>
+                            <span className="bg-[#002D62] text-white text-xs py-1 px-2 rounded-full font-bold">
+                                {filteredIncidents.length}
+                            </span>
                         </div>
-                    )}
+                        
+                        {filteredIncidents.length === 0 ? (
+                            <p className="text-sm text-gray-500 italic">No hay incidentes para los filtros seleccionados.</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {filteredIncidents.map(incident => {
+                                    // Determinar color de la tarjeta según categoría
+                                    let borderColor = '#002D62'; // Por defecto
+                                    if (['arboles', 'corte', 'incendio', 'techo'].includes(incident.category?.slug)) {
+                                        borderColor = '#F28C28'; // Viento: Naranja
+                                    } else if (['choque', 'vuelco', 'atropello'].includes(incident.category?.slug)) {
+                                        borderColor = '#DC2626'; // Accidente: Rojo
+                                    }
+                                    
+                                    return (
+                                        <div key={incident.id} className="bg-white p-3 rounded shadow-sm border-l-4" style={{ borderColor }}>
+                                            <h3 className="font-bold text-[#002D62] text-sm">{incident.title}</h3>
+                                            <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
+                                            <div className="mt-2 flex items-center justify-between">
+                                                <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
+                                                    {incident.category?.name || 'Evento'}
+                                                </span>
+                                                <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                                                    Fuente: {incident.source_name}
+                                                </a>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Botón para ocultar en la parte inferior del navbar */}
@@ -124,7 +232,7 @@ const MapComponent = () => {
                         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                     />
                     
-                    {incidents.map(incident => (
+                    {filteredIncidents.map(incident => (
                         <Marker 
                             key={incident.id} 
                             position={[incident.latitude, incident.longitude]}
