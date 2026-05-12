@@ -14,7 +14,7 @@ RSS_FEEDS = [
     "https://diariodecuyo.com.ar/rss/rss.xml",
     "https://www.tiempodesanjuan.com/rss/",
     "https://www.diariohuarpe.com/feed",
-    "https://www.nuevodiariosanjuan.com/feed",
+    "https://www.nuevodiariosanjuan.com.ar/feed",
     "https://www.diariomovil.info/feed",
     "https://www.diarioelzonda.com.ar/feed",
     "https://www.sanjuan8.com/rss"
@@ -97,7 +97,18 @@ def geocoding_funnel(text):
     # Nivel 4: Último Recurso (KM 0)
     return KM0_SAN_JUAN[0], KM0_SAN_JUAN[1], True
 
-def analyze_news(title, description, link):
+# Mapeo de nombres de medios
+MEDIA_NAMES = {
+    "diariodecuyo.com.ar": "Diario de Cuyo",
+    "tiempodesanjuan.com": "Tiempo de San Juan",
+    "diariohuarpe.com": "Diario Huarpe",
+    "nuevodiariosanjuan.com.ar": "Nuevo Diario",
+    "diariomovil.info": "Diario Móvil",
+    "diarioelzonda.com.ar": "Diario El Zonda",
+    "sanjuan8.com": "San Juan 8"
+}
+
+def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
     text_to_search = (title + " " + description).lower()
     
     if any(black_word in text_to_search for black_word in BLACKLIST_KEYWORDS):
@@ -144,7 +155,7 @@ def analyze_news(title, description, link):
         "latitud": lat,
         "longitud": lon,
         "is_approximate": is_approx,
-        "fuente_nombre": "RSS Noticias San Juan",
+        "fuente_nombre": fuente_nombre,
         "fuente_url": link,
         "verificado": False
     }
@@ -153,7 +164,7 @@ def send_to_api(incident_data):
     try:
         res = requests.post(API_URL, json=incident_data, headers={'Accept': 'application/json'})
         if res.status_code == 201:
-            print(f"[OK] Incidente guardado: {incident_data['etiqueta']} - {incident_data['titulo']}")
+            print(f"[OK] Incidente guardado: {incident_data['fuente_nombre']} - {incident_data['titulo']}")
         elif res.status_code == 200:
             print(f"[DUPLICADO] {incident_data['titulo']}")
         else:
@@ -165,7 +176,11 @@ def scrape_rss():
     print(f"[{datetime.now()}] Iniciando barrido de RSS...")
     for feed_url in RSS_FEEDS:
         try:
-            print(f"Leyendo: {feed_url}")
+            # Detectar nombre del medio
+            domain = feed_url.split('/')[2].replace('www.', '')
+            fuente_nombre = MEDIA_NAMES.get(domain, "Noticias San Juan")
+            
+            print(f"Leyendo: {fuente_nombre} ({feed_url})")
             response = requests.get(feed_url, timeout=10, verify=False)
             if response.status_code == 200:
                 root = ET.fromstring(response.content)
@@ -175,7 +190,7 @@ def scrape_rss():
                     link = item.find('link').text if item.find('link') is not None else ''
                     
                     if title:
-                        incident = analyze_news(title, desc, link)
+                        incident = analyze_news(title, desc, link, fuente_nombre)
                         if incident:
                             send_to_api(incident)
                             time.sleep(1) # Respetar rate limiting de Nominatim
