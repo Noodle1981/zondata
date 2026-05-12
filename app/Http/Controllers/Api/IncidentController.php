@@ -27,6 +27,7 @@ class IncidentController extends Controller
             'descripcion' => 'nullable|string',
             'latitud' => 'required|numeric',
             'longitud' => 'required|numeric',
+            'is_approximate' => 'nullable|boolean',
             'fuente_nombre' => 'nullable|string|max:255',
             'fuente_url' => 'nullable|url',
             'verificado' => 'nullable|boolean',
@@ -65,6 +66,7 @@ class IncidentController extends Controller
             'source_url' => $validated['fuente_url'],
             'latitude' => $validated['latitud'],
             'longitude' => $validated['longitud'],
+            'is_approximate' => $validated['is_approximate'] ?? false,
             'status' => 'Published', // Por defecto publicado
             'event_date' => now(),
         ]);

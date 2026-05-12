@@ -16,12 +16,14 @@ class Incident extends Model
         'source_url',
         'latitude',
         'longitude',
+        'is_approximate',
         'event_date',
         'status',
     ];
 
     protected $casts = [
         'event_date' => 'datetime',
+        'is_approximate' => 'boolean',
     ];
 
     public function category()

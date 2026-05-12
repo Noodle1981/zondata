@@ -13,7 +13,7 @@ L.Icon.Default.mergeOptions({
 });
 
 // Custom Icon generator based on category type
-const createCustomIcon = (type) => {
+const createCustomIcon = (type, isApproximate = false) => {
     // Determine color based on rules: Zonda (Wind/Fire) = Orange, Data (Tech/Services) = Blue, etc.
     let color = '#002D62'; // Tech Blue default
     if (['arboles', 'corte', 'incendio', 'techo'].includes(type.toLowerCase())) {
@@ -22,9 +22,14 @@ const createCustomIcon = (type) => {
         color = '#DC2626'; // Accidente: Red Alert
     }
 
+    // Si es aproximada, usamos un estilo diferente (ej. borde gris o menos opacidad)
+    const stroke = isApproximate ? '#9CA3AF' : 'white';
+    const strokeWidth = isApproximate ? '2' : '1';
+
     const svgIcon = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="32" height="32" class="marker-icon">
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+            <circle cx="12" cy="9" r="7" fill="white" fill-opacity="0.2" />
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" stroke="${stroke}" stroke-width="${strokeWidth}"/>
         </svg>
     `;
 
@@ -190,18 +195,23 @@ const MapComponent = () => {
                                     }
                                     
                                     return (
-                                        <div key={incident.id} className="bg-white p-3 rounded shadow-sm border-l-4" style={{ borderColor }}>
-                                            <h3 className="font-bold text-[#002D62] text-sm">{incident.title}</h3>
-                                            <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
-                                            <div className="mt-2 flex items-center justify-between">
-                                                <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
-                                                    {incident.category?.name || 'Evento'}
-                                                </span>
-                                                <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
-                                                    Fuente: {incident.source_name}
-                                                </a>
-                                            </div>
-                                        </div>
+                                                <div key={incident.id} className="bg-white p-3 rounded shadow-sm border-l-4 relative overflow-hidden" style={{ borderColor }}>
+                                                    {incident.is_approximate && (
+                                                        <div className="absolute top-0 right-0 px-2 py-0.5 bg-gray-100 text-[8px] text-gray-500 rounded-bl font-bold uppercase tracking-wider">
+                                                            Aproximado
+                                                        </div>
+                                                    )}
+                                                    <h3 className="font-bold text-[#002D62] text-sm">{incident.title}</h3>
+                                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
+                                                    <div className="mt-2 flex items-center justify-between">
+                                                        <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
+                                                            {incident.category?.name || 'Evento'}
+                                                        </span>
+                                                        <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                                                            Fuente: {incident.source_name}
+                                                        </a>
+                                                    </div>
+                                                </div>
                                     );
                                 })}
                             </div>
@@ -236,13 +246,20 @@ const MapComponent = () => {
                         <Marker 
                             key={incident.id} 
                             position={[incident.latitude, incident.longitude]}
-                            icon={createCustomIcon(incident.category?.slug || '')}
+                            icon={createCustomIcon(incident.category?.slug || '', incident.is_approximate)}
                         >
                             <Popup className="custom-popup">
                                 <div className="p-1">
-                                    <span className="inline-block px-2 py-1 bg-gray-100 text-xs font-bold rounded mb-2 text-[#002D62]">
-                                        {incident.category?.name || 'Evento'}
-                                    </span>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="inline-block px-2 py-1 bg-gray-100 text-xs font-bold rounded text-[#002D62]">
+                                            {incident.category?.name || 'Evento'}
+                                        </span>
+                                        {incident.is_approximate && (
+                                            <span className="flex items-center gap-1 text-[9px] font-bold text-gray-400 uppercase bg-gray-50 px-1 rounded border border-gray-100">
+                                                <AlertTriangle size={10} /> Ubicación Aproximada
+                                            </span>
+                                        )}
+                                    </div>
                                     <h3 className="font-bold text-sm mb-1">{incident.title}</h3>
                                     {incident.description && <p className="text-xs text-gray-600 mb-2">{incident.description}</p>}
                                     <div className="text-[10px] border-t pt-2 mt-2">
