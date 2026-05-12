@@ -20,6 +20,8 @@ const createCustomIcon = (type, isApproximate = false) => {
         color = '#F28C28'; // Viento: Orange
     } else if (['choque', 'vuelco', 'atropello'].includes(type.toLowerCase())) {
         color = '#DC2626'; // Accidente: Red Alert
+    } else if (type.toLowerCase().startsWith('incendio')) {
+        color = '#B91C1C'; // Incendio: Dark Red
     }
 
     // Si es aproximada, usamos un estilo diferente (ej. borde gris o menos opacidad)
@@ -50,6 +52,7 @@ const MapComponent = () => {
     // Estados para Filtros
     const [windAccordionOpen, setWindAccordionOpen] = useState(true);
     const [accidentAccordionOpen, setAccidentAccordionOpen] = useState(false);
+    const [fireAccordionOpen, setFireAccordionOpen] = useState(false);
     const [activeFilters, setActiveFilters] = useState([]);
 
     // Definir las categorías
@@ -64,6 +67,13 @@ const MapComponent = () => {
         { id: 'choque', name: '💥 Choque / Colisión' },
         { id: 'vuelco', name: '🔄 Vuelco' },
         { id: 'atropello', name: '🚶 Atropello / Peatón' }
+    ];
+
+    const fireCategories = [
+        { id: 'incendio', name: '🔥 Incendio General' },
+        { id: 'incendio-vivienda', name: '🏠 Incendio Vivienda' },
+        { id: 'incendio-pastizales', name: '🌿 Pastizales / Campo' },
+        { id: 'incendio-vehiculo', name: '🚗 Incendio Vehículo' }
     ];
 
     const toggleFilter = (categoryId) => {
@@ -173,6 +183,35 @@ const MapComponent = () => {
                         )}
                     </div>
 
+                    {/* Acordeón de Incendios */}
+                    <div className="bg-white border-b border-gray-200">
+                        <button 
+                            className="w-full p-4 flex items-center justify-between font-bold text-[#002D62] hover:bg-gray-50 transition-colors"
+                            onClick={() => setFireAccordionOpen(!fireAccordionOpen)}
+                        >
+                            <div className="flex items-center gap-2">
+                                <span>🔥 Incendios y Siniestros</span>
+                            </div>
+                            {fireAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        
+                        {fireAccordionOpen && (
+                            <div className="px-4 pb-4 space-y-2">
+                                {fireCategories.map(cat => (
+                                    <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 text-red-700 rounded border-gray-300 focus:ring-red-700"
+                                            checked={activeFilters.includes(cat.id)}
+                                            onChange={() => toggleFilter(cat.id)}
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">{cat.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <div className="p-4">
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="font-semibold text-gray-700 uppercase text-sm">Eventos Activos</h2>
@@ -192,6 +231,8 @@ const MapComponent = () => {
                                         borderColor = '#F28C28'; // Viento: Naranja
                                     } else if (['choque', 'vuelco', 'atropello'].includes(incident.category?.slug)) {
                                         borderColor = '#DC2626'; // Accidente: Rojo
+                                    } else if (incident.category?.slug?.startsWith('incendio')) {
+                                        borderColor = '#B91C1C'; // Incendio: Rojo Oscuro
                                     }
                                     
                                     return (

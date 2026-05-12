@@ -26,6 +26,9 @@ CONTEXT_WIND = ["zonda", "viento sur", "ráfagas", "viento", "vientos"]
 # Palabras de contexto Accidentes
 CONTEXT_ACCIDENT = ["accidente", "siniestro", "tránsito", "transito", "choque", "vuelco", "vial"]
 
+# Palabras de contexto Incendios
+CONTEXT_FIRE = ["incendio", "fuego", "bomberos", "llamas"]
+
 # Lista Negra
 BLACKLIST_KEYWORDS = ["alerta", "pronóstico", "pronostico", "precaución", "precaucion", "recomiendan", "prevención", "prevencion", "llegaría", "llegaria", "internacional", "mundo"]
 
@@ -41,6 +44,13 @@ ACCIDENT_MAPPING = {
     "choque": ["choque", "colisión", "impacto", "chocó", "impactó", "siniestro"],
     "vuelco": ["vuelco", "volcó", "despistó"],
     "atropello": ["atropelló", "embistió", "peatón", "arrolló"]
+}
+
+# Mapeo de Incendios (Independiente)
+FIRE_MAPPING = {
+    "incendio-vivienda": ["casa", "vivienda", "departamento", "edificio", "habitación"],
+    "incendio-pastizales": ["pastizales", "campo", "lote", "baldío", "maleza"],
+    "incendio-vehiculo": ["auto", "camioneta", "camión", "vehículo", "moto"]
 }
 
 # Configuración Geocoding
@@ -103,6 +113,14 @@ def analyze_news(title, description, link):
 
     if not detected_category and any(word in text_to_search for word in CONTEXT_ACCIDENT):
         for slug, keywords in ACCIDENT_MAPPING.items():
+            if any(kw in text_to_search for kw in keywords):
+                detected_category = slug
+                break
+    
+    # 3. Chequear si es un Incendio (Independiente)
+    if not detected_category and any(word in text_to_search for word in CONTEXT_FIRE):
+        detected_category = "incendio" # Genérico por defecto
+        for slug, keywords in FIRE_MAPPING.items():
             if any(kw in text_to_search for kw in keywords):
                 detected_category = slug
                 break
