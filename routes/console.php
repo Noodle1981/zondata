@@ -8,4 +8,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 use Illuminate\Support\Facades\Schedule;
-Schedule::command('incidents:scrape')->hourly();
+Schedule::command('incidents:scrape')->everyThirtyMinutes();

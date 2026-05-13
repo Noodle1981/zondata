@@ -198,4 +198,15 @@ def scrape_rss():
             print(f"Error procesando el feed {feed_url}: {e}")
 
 if __name__ == "__main__":
-    scrape_rss()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--daemon', action='store_true', help='Ejecutar en modo bucle infinito cada 30 minutos')
+    args = parser.parse_args()
+
+    if args.daemon:
+        while True:
+            scrape_rss()
+            print(f"[{datetime.now()}] Esperando 30 minutos para el próximo barrido...")
+            time.sleep(1800) # 30 minutos
+    else:
+        scrape_rss()

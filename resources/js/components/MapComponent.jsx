@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database } from 'lucide-react';
 
 // Fix for default Leaflet icons in React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -47,13 +47,19 @@ const createCustomIcon = (type, isApproximate = false) => {
 const MapComponent = () => {
     const [incidents, setIncidents] = useState([]);
     // Abrir por defecto en escritorio, cerrado en móvil
-    const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+    const [sidebarOpen, setSidebarOpen] = useState(() => {
+        // Guard against SSR environments
+        if (typeof window === 'undefined') return true;
+        return window.innerWidth > 768;
+    });
     
     // Estados para Filtros
-    const [windAccordionOpen, setWindAccordionOpen] = useState(true);
-    const [accidentAccordionOpen, setAccidentAccordionOpen] = useState(false);
-    const [fireAccordionOpen, setFireAccordionOpen] = useState(false);
     const [activeFilters, setActiveFilters] = useState([]);
+    const [timeRange, setTimeRange] = useState('today'); // 'today' or 'month'
+    const [activeTab, setActiveTab] = useState('wind'); // 'wind', 'accident', 'fire'
+    const [loading, setLoading] = useState(false);
+    const [lastSync, setLastSync] = useState(null);       // timestamp of last successful fetch
+    const [, setTick] = useState(0);                      // forces re-render every minute for relative time
 
     // Definir las categorías
     const windCategories = [
@@ -90,15 +96,52 @@ const MapComponent = () => {
         return activeFilters.includes(incident.category?.slug);
     });
 
+    // Relative time helper — "hace X minutos"
+    const relativeTime = (date) => {
+        if (!date) return null;
+        const diffMs = Date.now() - date.getTime();
+        const diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return 'hace unos segundos';
+        if (diffMin === 1) return 'hace 1 minuto';
+        return `hace ${diffMin} minutos`;
+    };
+
     // Center on entire San Juan Province
     const position = [-30.8654, -68.8895];
 
     useEffect(() => {
-        // Fetch incidents from API
-        fetch('/api/incidents')
-            .then(res => res.json())
-            .then(data => setIncidents(data))
-            .catch(err => console.error("Error fetching incidents:", err));
+        const fetchIncidents = () => {
+            setLoading(true);
+            fetch(`/api/incidents?range=${timeRange}`)
+                .then(res => res.json())
+                .then(data => {
+                    // Laravel paginate() returns { data: [...], ... }
+                    // Plain get() returns [...] directly
+                    // We must guarantee incidents is ALWAYS an array
+                    const items = data?.data ?? data;
+                    setIncidents(Array.isArray(items) ? items : []);
+                    setLastSync(new Date()); // Record sync time
+                    setLoading(false);
+                })
+                .catch(err => {
+                    console.error("Error fetching incidents:", err);
+                    setIncidents([]);
+                    setLoading(false);
+                });
+        };
+
+        fetchIncidents();
+
+        // Auto-refresh cada 5 minutos (300000 ms)
+        const interval = setInterval(fetchIncidents, 300000);
+
+        return () => clearInterval(interval);
+    }, [timeRange]);
+
+    // Ticker: re-render every 60s so relative time stays fresh
+    useEffect(() => {
+        const ticker = setInterval(() => setTick(t => t + 1), 60000);
+        return () => clearInterval(ticker);
     }, []);
 
     return (
@@ -123,98 +166,164 @@ const MapComponent = () => {
                 <div className="w-full bg-white border-b border-gray-200">
                     <img src="/images/logo.jpeg" alt="ZonData Logo" className="w-full h-auto object-contain" />
                 </div>
+
+                {/* Selector de Rango de Tiempo */}
+                <div className="p-4 bg-[#002D62] text-white">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Calendar size={18} className="text-[#F28C28]" />
+                        <span className="text-sm font-bold uppercase tracking-wider">Rango de Tiempo</span>
+                    </div>
+                    <div className="flex bg-[#001D40] rounded-lg p-1">
+                        <button 
+                            onClick={() => setTimeRange('today')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${timeRange === 'today' ? 'bg-[#F28C28] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            HOY
+                        </button>
+                        <button 
+                            onClick={() => setTimeRange('month')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${timeRange === 'month' ? 'bg-[#F28C28] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            ÚLTIMO MES
+                        </button>
+                    </div>
+                </div>
                 
                 <div className="flex-1 overflow-y-auto bg-[#F4F4F4]">
-                    {/* Acordeón de Viento */}
-                    <div className="bg-white border-b border-gray-200">
-                        <button 
-                            className="w-full p-4 flex items-center justify-between font-bold text-[#002D62] hover:bg-gray-50 transition-colors"
-                            onClick={() => setWindAccordionOpen(!windAccordionOpen)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <span>🌪️ Incidentes por Viento</span>
-                            </div>
-                            {windAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                        </button>
-                        
-                        {windAccordionOpen && (
-                            <div className="px-4 pb-4 space-y-2">
-                                {windCategories.map(cat => (
-                                    <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
-                                        <input 
-                                            type="checkbox" 
-                                            className="w-4 h-4 text-[#F28C28] rounded border-gray-300 focus:ring-[#F28C28]"
-                                            checked={activeFilters.includes(cat.id)}
-                                            onChange={() => toggleFilter(cat.id)}
-                                        />
-                                        <span className="text-sm font-medium text-gray-700">{cat.name}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        )}
+                    {/* Navegación por Pestañas de Categoría */}
+                    <div className="bg-white border-b border-gray-200 p-2">
+                        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                            <button 
+                                onClick={() => setActiveTab('wind')}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'wind' ? 'bg-white shadow-sm text-[#F28C28]' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                                <Wind size={20} />
+                                <span className="text-[10px] font-bold mt-1 uppercase">Viento</span>
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('accident')}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'accident' ? 'bg-white shadow-sm text-[#DC2626]' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                                <Car size={20} />
+                                <span className="text-[10px] font-bold mt-1 uppercase">Tránsito</span>
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('fire')}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'fire' ? 'bg-white shadow-sm text-red-700' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                                <Zap size={20} />
+                                <span className="text-[10px] font-bold mt-1 uppercase">Siniestros</span>
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Acordeón de Accidentes */}
-                    <div className="bg-white border-b border-gray-200">
-                        <button 
-                            className="w-full p-4 flex items-center justify-between font-bold text-[#002D62] hover:bg-gray-50 transition-colors"
-                            onClick={() => setAccidentAccordionOpen(!accidentAccordionOpen)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <span>🚗 Tránsito y Accidentes</span>
-                            </div>
-                            {accidentAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                        </button>
+                    {/* Área de Filtros Dinámicos */}
+                    <div className="bg-white border-b border-gray-200 px-4 py-3 min-h-[160px]">
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
+                            {activeTab === 'wind' && "Opciones de Viento"}
+                            {activeTab === 'accident' && "Opciones de Tránsito"}
+                            {activeTab === 'fire' && "Opciones de Siniestros"}
+                        </h3>
                         
-                        {accidentAccordionOpen && (
-                            <div className="px-4 pb-4 space-y-2">
-                                {accidentCategories.map(cat => (
-                                    <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
-                                        <input 
-                                            type="checkbox" 
-                                            className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-600"
-                                            checked={activeFilters.includes(cat.id)}
-                                            onChange={() => toggleFilter(cat.id)}
-                                        />
-                                        <span className="text-sm font-medium text-gray-700">{cat.name}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                        <div className="space-y-1">
+                            {activeTab === 'wind' && windCategories.map(cat => (
+                                <label key={cat.id} className="flex items-center gap-3 p-1.5 hover:bg-gray-50 rounded cursor-pointer transition-colors group">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 text-[#F28C28] rounded border-gray-300 focus:ring-[#F28C28]"
+                                        checked={activeFilters.includes(cat.id)}
+                                        onChange={() => toggleFilter(cat.id)}
+                                    />
+                                    <span className="text-xs font-medium text-gray-700 group-hover:text-black">{cat.name}</span>
+                                </label>
+                            ))}
 
-                    {/* Acordeón de Incendios */}
-                    <div className="bg-white border-b border-gray-200">
-                        <button 
-                            className="w-full p-4 flex items-center justify-between font-bold text-[#002D62] hover:bg-gray-50 transition-colors"
-                            onClick={() => setFireAccordionOpen(!fireAccordionOpen)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <span>🔥 Incendios y Siniestros</span>
-                            </div>
-                            {fireAccordionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                        </button>
-                        
-                        {fireAccordionOpen && (
-                            <div className="px-4 pb-4 space-y-2">
-                                {fireCategories.map(cat => (
-                                    <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
-                                        <input 
-                                            type="checkbox" 
-                                            className="w-4 h-4 text-red-700 rounded border-gray-300 focus:ring-red-700"
-                                            checked={activeFilters.includes(cat.id)}
-                                            onChange={() => toggleFilter(cat.id)}
-                                        />
-                                        <span className="text-sm font-medium text-gray-700">{cat.name}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        )}
+                            {activeTab === 'accident' && accidentCategories.map(cat => (
+                                <label key={cat.id} className="flex items-center gap-3 p-1.5 hover:bg-gray-50 rounded cursor-pointer transition-colors group">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-600"
+                                        checked={activeFilters.includes(cat.id)}
+                                        onChange={() => toggleFilter(cat.id)}
+                                    />
+                                    <span className="text-xs font-medium text-gray-700 group-hover:text-black">{cat.name}</span>
+                                </label>
+                            ))}
+
+                            {activeTab === 'fire' && fireCategories.map(cat => (
+                                <label key={cat.id} className="flex items-center gap-3 p-1.5 hover:bg-gray-50 rounded cursor-pointer transition-colors group">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 text-red-700 rounded border-gray-300 focus:ring-red-700"
+                                        checked={activeFilters.includes(cat.id)}
+                                        onChange={() => toggleFilter(cat.id)}
+                                    />
+                                    <span className="text-xs font-medium text-gray-700 group-hover:text-black">{cat.name}</span>
+                                </label>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="font-semibold text-gray-700 uppercase text-sm">Eventos Activos</h2>
+                        {/* Barra de estado del sistema — prominente */}
+                        <div className={`mb-4 rounded-xl border-2 p-3 transition-all ${
+                            loading
+                                ? 'bg-amber-50 border-amber-300'
+                                : incidents.length > 0
+                                    ? 'bg-emerald-50 border-emerald-300'
+                                    : 'bg-slate-50 border-slate-200'
+                        }`}>
+                            <div className="flex items-center gap-2.5">
+                                {/* Punto de estado con anillo */}
+                                <span className="relative flex-shrink-0 w-4 h-4">
+                                    {(loading || incidents.length > 0) && (
+                                        <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 animate-ping ${
+                                            loading ? 'bg-amber-400' : 'bg-emerald-500'
+                                        }`} />
+                                    )}
+                                    <span className={`relative inline-flex w-4 h-4 rounded-full ${
+                                        loading
+                                            ? 'bg-amber-400'
+                                            : incidents.length > 0
+                                                ? 'bg-emerald-500'
+                                                : 'bg-slate-400'
+                                    }`} />
+                                </span>
+
+                                <div className="min-w-0">
+                                    {/* Línea 1: estado principal */}
+                                    <p className={`text-xs font-bold leading-tight ${
+                                        loading
+                                            ? 'text-amber-700'
+                                            : incidents.length > 0
+                                                ? 'text-emerald-700'
+                                                : 'text-slate-600'
+                                    }`}>
+                                        {loading
+                                            ? '⟳ Sincronizando RSS...'
+                                            : incidents.length > 0
+                                                ? `✓ ${incidents.length} incidente${incidents.length > 1 ? 's' : ''} detectado${incidents.length > 1 ? 's' : ''}`
+                                                : '— Sin incidentes detectados'}
+                                    </p>
+                                    {/* Línea 2: tiempo de sincronización */}
+                                    {lastSync && !loading && (
+                                        <p className="text-[10px] text-slate-400 mt-0.5">
+                                            Última sincronización: {relativeTime(lastSync)}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <h2 className="font-semibold text-gray-700 uppercase text-sm">Eventos Activos</h2>
+                                {loading && (
+                                    <div className="animate-spin text-[#F28C28]">
+                                        <Zap size={14} />
+                                    </div>
+                                )}
+                            </div>
                             <span className="bg-[#002D62] text-white text-xs py-1 px-2 rounded-full font-bold">
                                 {filteredIncidents.length}
                             </span>
@@ -257,6 +366,28 @@ const MapComponent = () => {
                                 })}
                             </div>
                         )}
+                    </div>
+
+                    {/* CTA Dataset Completo */}
+                    <div className="p-4 mt-2">
+                        <button 
+                            className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-4 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            onClick={() => alert("Próximamente: Suscríbete para acceder al dataset histórico completo y herramientas de análisis avanzado.")}
+                        >
+                            <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <Database size={40} />
+                            </div>
+                            <div className="relative z-10 flex flex-col items-start gap-1">
+                                <span className="text-[10px] font-bold text-[#F28C28] uppercase tracking-[0.2em]">Acceso Premium</span>
+                                <h4 className="text-white font-bold text-sm">Dataset Completo</h4>
+                                <p className="text-gray-400 text-[10px] text-left leading-tight mt-1">
+                                    Histórico total, exportación CSV/JSON y alertas personalizadas.
+                                </p>
+                                <div className="mt-3 flex items-center gap-2 text-white text-xs font-bold bg-[#F28C28] py-1.5 px-3 rounded-lg">
+                                    Suscribirse ahora
+                                </div>
+                            </div>
+                        </button>
                     </div>
                 </div>
 

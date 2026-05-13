@@ -4,7 +4,9 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "scraper": "python scrapers/rss_scraper.py --daemon",
+        "start": "concurrently --names \"VITE,SCRAPER\" --prefix-colors \"cyan,yellow\" \"vite\" \"python scrapers/rss_scraper.py --daemon\""
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

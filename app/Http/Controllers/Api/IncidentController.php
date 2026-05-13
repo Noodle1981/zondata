@@ -8,12 +8,20 @@ use Illuminate\Http\Request;
 
 class IncidentController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $incidents = Incident::with('category')
-            ->where('status', 'Published')
-            ->orderBy('event_date', 'desc')
-            ->get();
+        $query = Incident::with('category')
+            ->where('status', 'Published');
+
+        $range = $request->query('range', 'today');
+
+        if ($range === 'today') {
+            $query->where('event_date', '>=', now()->startOfDay());
+        } elseif ($range === 'month') {
+            $query->where('event_date', '>=', now()->subMonth());
+        }
+
+        $incidents = $query->orderBy('event_date', 'desc')->paginate(50);
 
         return response()->json($incidents);
     }
