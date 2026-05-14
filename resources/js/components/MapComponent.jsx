@@ -13,7 +13,7 @@ L.Icon.Default.mergeOptions({
 });
 
 // Custom Icon generator based on category type
-const createCustomIcon = (type, isApproximate = false, isFatal = false) => {
+const createCustomIcon = (type, isApproximate = false, isFatal = false, title = "Incidente") => {
     let color = '#002D62'; 
     
     // Iconos SVG Ultra-Simplificados (Blancos)
@@ -41,7 +41,7 @@ const createCustomIcon = (type, isApproximate = false, isFatal = false) => {
     }
 
     const svgIcon = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" role="img" aria-label="${title}">
             <!-- Sombra -->
             <path d="M12 22s7-7.75 7-13c0-3.87-3.13-7-7-7s-7 3.13-7 7c0 5.25 7 13 7 13z" fill="black" fill-opacity="0.2" transform="translate(1, 1)" />
             <!-- Pin Cuerpo -->
@@ -59,7 +59,8 @@ const createCustomIcon = (type, isApproximate = false, isFatal = false) => {
         html: svgIcon,
         iconSize: [40, 40],
         iconAnchor: [20, 40],
-        popupAnchor: [0, -40]
+        popupAnchor: [0, -40],
+        title: title
     });
 };
 
@@ -220,11 +221,13 @@ const MapComponent = () => {
                             </div>
                             <input 
                                 type="date" 
+                                id="incident-date"
                                 value={selectedDate}
                                 onChange={(e) => setSelectedDate(e.target.value)}
                                 max={new Date().toISOString().split('T')[0]}
                                 className="w-full bg-[#002552] border-2 border-[#001d40] rounded-xl py-2.5 pl-10 pr-4 text-sm font-black text-white focus:ring-2 focus:ring-[#EAB308] focus:border-transparent outline-none transition-all shadow-lg shadow-blue-900/20 appearance-none"
                                 style={{ colorScheme: 'dark' }} // Asegura que el icono del calendario nativo sea visible en oscuro
+                                aria-label="Seleccionar fecha de incidentes"
                             />
                         </div>
                     </div>
@@ -459,7 +462,7 @@ const MapComponent = () => {
                         <Marker 
                             key={incident.id} 
                             position={[incident.latitude, incident.longitude]}
-                            icon={createCustomIcon(incident.category?.slug || '', incident.is_approximate, incident.is_fatal)}
+                            icon={createCustomIcon(incident.category?.slug || '', incident.is_approximate, incident.is_fatal, incident.title)}
                         >
                             <Popup className="custom-popup">
                                 <div className="p-1">
