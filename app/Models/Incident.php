@@ -17,6 +17,7 @@ class Incident extends Model
         'latitude',
         'longitude',
         'is_approximate',
+        'is_fatal',
         'event_date',
         'status',
     ];
@@ -24,6 +25,7 @@ class Incident extends Model
     protected $casts = [
         'event_date' => 'datetime',
         'is_approximate' => 'boolean',
+        'is_fatal' => 'boolean',
     ];
 
     public function category()

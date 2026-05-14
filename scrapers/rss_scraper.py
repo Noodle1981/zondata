@@ -57,6 +57,13 @@ CONTEXT_FIRE = ["incendio", "llamas", "bomberos", "quemó", "siniestro ígneo"]
 # Nota: Quitamos "fuego" solo porque suele venir de "arma de fuego" en policiales.
 # Lo usaremos con más cuidado abajo.
 
+# Palabras que indican muerte o deceso
+FATAL_KEYWORDS = [
+    "murió", "falleció", "falló", "perdió la vida", "víctima fatal", "deceso",
+    "muerto", "muertos", "muertes", "muerte", "occisos", "occiso", "occisa",
+    "no sobrevivió", "sin vida"
+]
+
 FIRE_MAPPING = {
     "incendio": ["incendio", "llamas", "bomberos", "fuego"]
 }
@@ -257,6 +264,11 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
         # Si no, intentar en el texto completo
         lat, lon, is_approx = geocoding_funnel(title + " " + description)
     
+    # 5. Detectar si hay una muerte confirmada
+    is_fatal = None
+    if any(kw in text_to_search for kw in FATAL_KEYWORDS):
+        is_fatal = True
+
     return {
         "etiqueta": detected_category,
         "titulo": title[:250],
@@ -264,6 +276,7 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
         "latitud": lat,
         "longitud": lon,
         "is_approximate": is_approx,
+        "is_fatal": is_fatal,
         "fuente_nombre": fuente_nombre,
         "fuente_url": link,
         "verificado": False

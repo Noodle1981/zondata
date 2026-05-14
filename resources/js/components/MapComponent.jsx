@@ -13,34 +13,46 @@ L.Icon.Default.mergeOptions({
 });
 
 // Custom Icon generator based on category type
-const createCustomIcon = (type, isApproximate = false) => {
-    // Determine color based on rules: Zonda (Wind/Fire) = Orange, Data (Tech/Services) = Blue, etc.
+const createCustomIcon = (type, isApproximate = false, isFatal = false) => {
     let color = '#002D62'; // Tech Blue default
-    if (['arboles', 'corte', 'incendio', 'techo'].includes(type.toLowerCase())) {
-        color = '#F28C28'; // Viento: Orange
-    } else if (['choque', 'vuelco', 'atropello'].includes(type.toLowerCase())) {
-        color = '#DC2626'; // Accidente: Red Alert
-    } else if (type.toLowerCase().startsWith('incendio')) {
-        color = '#B91C1C'; // Incendio: Dark Red
+    let iconPath = 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z'; // Pin default
+
+    // Definir color e icono interno
+    if (isFatal) {
+        color = '#4B5563'; // Fatal: Gray
+        // Skull path
+        iconPath = 'M12 2a10 10 0 0 0-10 10c0 3 1.5 6 4 8v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2c2.5-2 4-5 4-8a10 10 0 0 0-10-10zm-3 10a2 2 0 1 1 2-2 2 2 0 0 1-2 2zm6 0a2 2 0 1 1 2-2 2 2 0 0 1-2 2z';
+    } else if (['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => type.toLowerCase().includes(k))) {
+        color = '#EAB308'; // Viento: Yellow
+    } else if (['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => type.toLowerCase().includes(k))) {
+        color = '#DC2626'; // Accidente: Red
+    } else if (type.toLowerCase().includes('incendio') || type.toLowerCase().includes('siniestro')) {
+        color = '#2563EB'; // Siniestro/Incendio: Blue
     }
 
-    // Si es aproximada, usamos un estilo diferente (ej. borde gris o menos opacidad)
     const stroke = isApproximate ? '#9CA3AF' : 'white';
     const strokeWidth = isApproximate ? '2' : '1';
+    const dashArray = isApproximate ? '3,3' : 'none';
 
     const svgIcon = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="32" height="32" class="marker-icon">
-            <circle cx="12" cy="9" r="7" fill="white" fill-opacity="0.2" />
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" stroke="${stroke}" stroke-width="${strokeWidth}"/>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="36" height="36">
+            <!-- Sombra -->
+            <path d="M12 22s7-7.75 7-13c0-3.87-3.13-7-7-7s-7 3.13-7 7c0 5.25 7 13 7 13z" fill="black" fill-opacity="0.2" transform="translate(1, 1)" />
+            <!-- Pin Principal -->
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" />
+            <!-- Icono Interno -->
+            <g transform="translate(6, 4) scale(0.5)" fill="white">
+                <path d="${iconPath}" />
+            </g>
         </svg>
     `;
 
     return L.divIcon({
         className: 'custom-leaflet-icon',
         html: svgIcon,
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-        popupAnchor: [0, -32]
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+        popupAnchor: [0, -36]
     });
 };
 
@@ -55,10 +67,12 @@ const MapComponent = () => {
     
     // Estados para Filtros
     const [activeFilters, setActiveFilters] = useState([]);
-    const [timeRange, setTimeRange] = useState('today'); // 'today' or 'month'
+    const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
     const [activeTab, setActiveTab] = useState('wind'); // 'wind', 'accident', 'fire'
     const [loading, setLoading] = useState(false);
-    const [lastSync, setLastSync] = useState(null);       // timestamp of last successful fetch
+    const [premiumError, setPremiumError] = useState(false);
+    const [filtersExpanded, setFiltersExpanded] = useState(false);
+    const [lastSync, setLastSync] = useState(null);       
     const [, setTick] = useState(0);                      // forces re-render every minute for relative time
 
     // Definir las categorías
@@ -90,10 +104,32 @@ const MapComponent = () => {
         );
     };
 
+    // Calcular contadores por slug
+    const counts = incidents.reduce((acc, inc) => {
+        const slug = inc.category?.slug;
+        if (slug) acc[slug] = (acc[slug] || 0) + 1;
+        return acc;
+    }, {});
+
     const filteredIncidents = incidents.filter(incident => {
-        if (activeFilters.length === 0) return true;
-        // Check if the incident's category slug matches any of the active filters
-        return activeFilters.includes(incident.category?.slug);
+        const slug = incident.category?.slug;
+        
+        // 1. Determinar a qué grupo pertenece el incidente
+        const isWind = ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug?.includes(k));
+        const isAccident = ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug?.includes(k));
+        const isFire = slug?.includes('incendio') || slug?.includes('siniestro');
+
+        // 2. Filtrar primero por la pestaña activa
+        if (activeTab === 'wind' && !isWind) return false;
+        if (activeTab === 'accident' && !isAccident) return false;
+        if (activeTab === 'fire' && !isFire) return false;
+
+        // 3. Si hay filtros específicos (checkboxes), filtrar por ellos
+        if (activeFilters.length > 0) {
+            return activeFilters.includes(slug);
+        }
+
+        return true;
     });
 
     // Relative time helper — "hace X minutos"
@@ -112,31 +148,33 @@ const MapComponent = () => {
     useEffect(() => {
         const fetchIncidents = () => {
             setLoading(true);
-            fetch(`/api/incidents?range=${timeRange}`)
-                .then(res => res.json())
+            setPremiumError(false);
+            
+            fetch(`/api/incidents?date=${selectedDate}`)
+                .then(res => {
+                    if (res.status === 402) {
+                        setPremiumError(true);
+                        throw new Error("Premium Required");
+                    }
+                    return res.json();
+                })
                 .then(data => {
-                    // Laravel paginate() returns { data: [...], ... }
-                    // Plain get() returns [...] directly
-                    // We must guarantee incidents is ALWAYS an array
                     const items = data?.data ?? data;
                     setIncidents(Array.isArray(items) ? items : []);
-                    setLastSync(new Date()); // Record sync time
+                    setLastSync(new Date()); 
                     setLoading(false);
                 })
                 .catch(err => {
                     console.error("Error fetching incidents:", err);
-                    setIncidents([]);
+                    if (!premiumError) setIncidents([]);
                     setLoading(false);
                 });
         };
 
         fetchIncidents();
-
-        // Auto-refresh cada 5 minutos (300000 ms)
         const interval = setInterval(fetchIncidents, 300000);
-
         return () => clearInterval(interval);
-    }, [timeRange]);
+    }, [selectedDate]);
 
     // Ticker: re-render every 60s so relative time stays fresh
     useEffect(() => {
@@ -163,53 +201,56 @@ const MapComponent = () => {
                 className={`absolute top-0 left-0 h-full w-80 bg-white shadow-2xl transition-transform duration-300 ease-in-out z-[999] flex flex-col overflow-hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
                 style={{ zIndex: 999 }}
             >
-                <div className="w-full bg-white border-b border-gray-200">
-                    <img src="/images/logo.jpeg" alt="ZonData Logo" className="w-full h-auto object-contain" />
-                </div>
+                    {/* Cabecera Sidebar con Logo Original */}
+                    <div className="bg-white border-b border-gray-100">
+                        <img src="/images/logo.jpeg" alt="ZonData Logo" className="w-full h-auto object-contain" />
+                    </div>
 
-                {/* Selector de Rango de Tiempo */}
-                <div className="p-4 bg-[#002D62] text-white">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Calendar size={18} className="text-[#F28C28]" />
-                        <span className="text-sm font-bold uppercase tracking-wider">Rango de Tiempo</span>
+                    {/* Selector de Fecha Estilizado en Azul */}
+                    <div className="p-4 border-b border-gray-100 bg-white">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Consultar Fecha</h3>
+                            <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-gray-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-[#EAB308] z-10">
+                                <Calendar size={16} />
+                            </div>
+                            <input 
+                                type="date" 
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                max={new Date().toISOString().split('T')[0]}
+                                className="w-full bg-[#002552] border-2 border-[#001d40] rounded-xl py-2.5 pl-10 pr-4 text-sm font-black text-white focus:ring-2 focus:ring-[#EAB308] focus:border-transparent outline-none transition-all shadow-lg shadow-blue-900/20 appearance-none"
+                                style={{ colorScheme: 'dark' }} // Asegura que el icono del calendario nativo sea visible en oscuro
+                            />
+                        </div>
                     </div>
-                    <div className="flex bg-[#001D40] rounded-lg p-1">
-                        <button 
-                            onClick={() => setTimeRange('today')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${timeRange === 'today' ? 'bg-[#F28C28] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            HOY
-                        </button>
-                        <button 
-                            onClick={() => setTimeRange('month')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${timeRange === 'month' ? 'bg-[#F28C28] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            ÚLTIMO MES
-                        </button>
-                    </div>
-                </div>
                 
                 <div className="flex-1 min-h-0 flex flex-col bg-[#F4F4F4]">
                     {/* Navegación por Pestañas de Categoría */}
                     <div className="bg-white border-b border-gray-200 p-2">
                         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
                             <button 
-                                onClick={() => setActiveTab('wind')}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'wind' ? 'bg-white shadow-sm text-[#F28C28]' : 'text-gray-400 hover:text-gray-600'}`}
+                                onClick={() => { setActiveTab('wind'); setActiveFilters([]); }}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'wind' ? 'bg-white shadow-sm text-[#EAB308]' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 <Wind size={20} />
                                 <span className="text-[10px] font-bold mt-1 uppercase">Viento</span>
                             </button>
                             <button 
-                                onClick={() => setActiveTab('accident')}
+                                onClick={() => { setActiveTab('accident'); setActiveFilters([]); }}
                                 className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'accident' ? 'bg-white shadow-sm text-[#DC2626]' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 <Car size={20} />
                                 <span className="text-[10px] font-bold mt-1 uppercase">Tránsito</span>
                             </button>
                             <button 
-                                onClick={() => setActiveTab('fire')}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'fire' ? 'bg-white shadow-sm text-red-700' : 'text-gray-400 hover:text-gray-600'}`}
+                                onClick={() => { setActiveTab('fire'); setActiveFilters([]); }}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'fire' ? 'bg-white shadow-sm text-[#2563EB]' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 <Zap size={20} />
                                 <span className="text-[10px] font-bold mt-1 uppercase">Siniestros</span>
@@ -217,62 +258,94 @@ const MapComponent = () => {
                         </div>
                     </div>
 
-                    {/* Área de Filtros Dinámicos */}
-                    <div className="bg-white border-b border-gray-200 px-4 py-3">
-                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
-                            {activeTab === 'wind' && "Opciones de Viento"}
-                            {activeTab === 'accident' && "Opciones de Tránsito"}
-                            {activeTab === 'fire' && "Opciones de Siniestros"}
-                        </h3>
+                    {/* Área de Filtros Dinámicos Plegable */}
+                    <div className="bg-white border-b border-gray-100 shadow-inner">
+                        <button 
+                            onClick={() => setFiltersExpanded(!filtersExpanded)}
+                            className="w-full px-4 py-3 flex items-center justify-between text-[#002D62] hover:bg-gray-50 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                    {activeTab === 'wind' && "Opciones de Viento"}
+                                    {activeTab === 'accident' && "Opciones de Tránsito"}
+                                    {activeTab === 'fire' && "Opciones de Siniestros"}
+                                </h3>
+                                {!filtersExpanded && activeFilters.length > 0 && (
+                                    <span className="bg-[#002D62] text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold">
+                                        {activeFilters.length}
+                                    </span>
+                                )}
+                            </div>
+                            {filtersExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                        </button>
                         
-                        <div className="space-y-1">
-                            {activeTab === 'wind' && windCategories.map(cat => (
-                                <label key={cat.id} className="flex items-center gap-3 p-1.5 hover:bg-gray-50 rounded cursor-pointer transition-colors group">
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-4 h-4 text-[#F28C28] rounded border-gray-300 focus:ring-[#F28C28]"
-                                        checked={activeFilters.includes(cat.id)}
-                                        onChange={() => toggleFilter(cat.id)}
-                                    />
-                                    <span className="text-xs font-medium text-gray-700 group-hover:text-black">{cat.name}</span>
-                                </label>
-                            ))}
+                        {filtersExpanded && (
+                            <div className="px-4 pb-4 space-y-1 animate-in slide-in-from-top-1 duration-200">
+                                {(activeTab === 'wind' ? windCategories : activeTab === 'accident' ? accidentCategories : fireCategories).map(cat => {
+                                    const count = counts[cat.id] || 0;
+                                    const isSelected = activeFilters.includes(cat.id);
+                                    let activeColor = activeTab === 'wind' ? '#EAB308' : activeTab === 'accident' ? '#DC2626' : '#2563EB';
 
-                            {activeTab === 'accident' && accidentCategories.map(cat => (
-                                <label key={cat.id} className="flex items-center gap-3 p-1.5 hover:bg-gray-50 rounded cursor-pointer transition-colors group">
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-600"
-                                        checked={activeFilters.includes(cat.id)}
-                                        onChange={() => toggleFilter(cat.id)}
-                                    />
-                                    <span className="text-xs font-medium text-gray-700 group-hover:text-black">{cat.name}</span>
-                                </label>
-                            ))}
-
-                            {activeTab === 'fire' && fireCategories.map(cat => (
-                                <label key={cat.id} className="flex items-center gap-3 p-1.5 hover:bg-gray-50 rounded cursor-pointer transition-colors group">
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-4 h-4 text-red-700 rounded border-gray-300 focus:ring-red-700"
-                                        checked={activeFilters.includes(cat.id)}
-                                        onChange={() => toggleFilter(cat.id)}
-                                    />
-                                    <span className="text-xs font-medium text-gray-700 group-hover:text-black">{cat.name}</span>
-                                </label>
-                            ))}
-                        </div>
+                                    return (
+                                        <label key={cat.id} className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all group ${isSelected ? 'bg-gray-50 shadow-sm' : 'hover:bg-gray-50/50'}`}>
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative flex items-center">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="peer appearance-none w-5 h-5 rounded-lg border-2 border-gray-200 checked:border-transparent transition-all"
+                                                        style={{ backgroundColor: isSelected ? activeColor : 'transparent' }}
+                                                        checked={isSelected}
+                                                        onChange={() => toggleFilter(cat.id)}
+                                                    />
+                                                    {isSelected && <Zap size={10} className="absolute left-1.25 text-white pointer-events-none" fill="white" />}
+                                                </div>
+                                                <span className={`text-xs font-bold transition-colors ${isSelected ? 'text-[#002D62]' : 'text-gray-500 group-hover:text-gray-700'}`}>
+                                                    {cat.name}
+                                                </span>
+                                            </div>
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${count > 0 ? 'bg-white border border-gray-100 text-gray-400 shadow-sm' : 'text-gray-300'}`}>
+                                                {count}
+                                            </span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar">
+                        {/* Estado Premium / Error */}
+                        {premiumError && (
+                            <div className="mb-4 bg-gradient-to-br from-slate-900 to-[#002D62] p-5 rounded-2xl shadow-xl border border-white/10 text-white relative overflow-hidden">
+                                <div className="absolute -top-4 -right-4 text-white/5">
+                                    <Database size={80} />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="bg-[#F28C28] p-1.5 rounded-lg">
+                                            <Calendar className="text-white" size={16} />
+                                        </div>
+                                        <h4 className="font-black text-sm uppercase tracking-tighter">Acceso Histórico</h4>
+                                    </div>
+                                    <p className="text-xs text-gray-300 leading-relaxed mb-4">
+                                        La consulta de datos de más de 30 días requiere una suscripción <b>ZonData Premium</b>.
+                                    </p>
+                                    <button className="w-full bg-[#F28C28] text-white py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[#F28C28]/20 hover:scale-[1.02] transition-transform">
+                                        Subscribirse ahora
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Barra de estado del sistema — prominente */}
-                        <div className={`mb-4 rounded-xl border-2 p-3 transition-all ${
-                            loading
-                                ? 'bg-amber-50 border-amber-300'
-                                : incidents.length > 0
-                                    ? 'bg-emerald-50 border-emerald-300'
-                                    : 'bg-slate-50 border-slate-200'
-                        }`}>
+                        {!premiumError && (
+                            <div className={`mb-4 rounded-xl border-2 p-3 transition-all ${
+                                loading
+                                    ? 'bg-amber-50 border-amber-300'
+                                    : incidents.length > 0
+                                        ? 'bg-emerald-50 border-emerald-300'
+                                        : 'bg-slate-50 border-slate-200'
+                            }`}>
                             <div className="flex items-center gap-2.5">
                                 {/* Punto de estado con anillo */}
                                 <span className="relative flex-shrink-0 w-4 h-4">
@@ -314,6 +387,7 @@ const MapComponent = () => {
                                 </div>
                             </div>
                         </div>
+                        )}
 
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
@@ -333,12 +407,12 @@ const MapComponent = () => {
                             {filteredIncidents.map(incident => {
                                 // Determinar color de la tarjeta según categoría
                                 let borderColor = '#002D62'; // Por defecto
-                                if (['arboles', 'corte', 'incendio', 'techo'].includes(incident.category?.slug)) {
-                                    borderColor = '#F28C28'; // Viento: Naranja
+                                if (['arboles', 'corte', 'techo', 'viento', 'zonda'].includes(incident.category?.slug)) {
+                                    borderColor = '#EAB308'; // Viento: Amarillo
                                 } else if (['choque', 'vuelco', 'atropello'].includes(incident.category?.slug)) {
                                     borderColor = '#DC2626'; // Accidente: Rojo
-                                } else if (incident.category?.slug?.startsWith('incendio')) {
-                                    borderColor = '#B91C1C'; // Incendio: Rojo Oscuro
+                                } else if (incident.category?.slug?.startsWith('incendio') || incident.category?.slug?.includes('siniestro')) {
+                                    borderColor = '#2563EB'; // Siniestro: Azul
                                 }
                                 
                                 return (
@@ -414,7 +488,7 @@ const MapComponent = () => {
                         <Marker 
                             key={incident.id} 
                             position={[incident.latitude, incident.longitude]}
-                            icon={createCustomIcon(incident.category?.slug || '', incident.is_approximate)}
+                            icon={createCustomIcon(incident.category?.slug || '', incident.is_approximate, incident.is_fatal)}
                         >
                             <Popup className="custom-popup">
                                 <div className="p-1">
