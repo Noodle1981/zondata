@@ -14,45 +14,52 @@ L.Icon.Default.mergeOptions({
 
 // Custom Icon generator based on category type
 const createCustomIcon = (type, isApproximate = false, isFatal = false) => {
-    let color = '#002D62'; // Tech Blue default
-    let iconPath = 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z'; // Pin default
+    let color = '#002D62'; 
+    
+    // Iconos SVG Ultra-Simplificados (Blancos)
+    const icons = {
+        wind: 'M2 12h5m2 0h12m-2-4l2 4-2 4M3 8h12a2 2 0 0 0 2-2 2 2 0 0 0-2-2M3 16h10a2 2 0 0 1 2 2 2 2 0 0 1-2 2',
+        car: 'M17 11l2 3v5c0 .6-.4 1-1 1h-1c-.6 0-1-.4-1-1v-1H6v1c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1v-5l2-3V6c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v5z M6 13h12',
+        fire: 'M12 2c0 0-2 4-2 6s1 3 3 3 2-2 2-3c4 5-1 11-1 11s-5-3-5-7c0-2 2-6 3-10z',
+        skull: 'M9 10a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM12 2a8 8 0 0 0-8 8c0 2 1 4 3 6v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2c2-2 3-4 3-6a8 8 0 0 0-8-8z'
+    };
 
-    // Definir color e icono interno
+    let selectedIcon = icons.car;
+
     if (isFatal) {
-        color = '#4B5563'; // Fatal: Gray
-        // Skull path
-        iconPath = 'M12 2a10 10 0 0 0-10 10c0 3 1.5 6 4 8v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2c2.5-2 4-5 4-8a10 10 0 0 0-10-10zm-3 10a2 2 0 1 1 2-2 2 2 0 0 1-2 2zm6 0a2 2 0 1 1 2-2 2 2 0 0 1-2 2z';
+        color = '#4B5563'; 
+        selectedIcon = icons.skull;
     } else if (['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => type.toLowerCase().includes(k))) {
-        color = '#EAB308'; // Viento: Yellow
+        color = '#EAB308'; 
+        selectedIcon = icons.wind;
     } else if (['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => type.toLowerCase().includes(k))) {
-        color = '#DC2626'; // Accidente: Red
+        color = '#DC2626'; 
+        selectedIcon = icons.car;
     } else if (type.toLowerCase().includes('incendio') || type.toLowerCase().includes('siniestro')) {
-        color = '#2563EB'; // Siniestro/Incendio: Blue
+        color = '#2563EB'; 
+        selectedIcon = icons.fire;
     }
 
-    const stroke = isApproximate ? '#9CA3AF' : 'white';
-    const strokeWidth = isApproximate ? '2' : '1';
-    const dashArray = isApproximate ? '3,3' : 'none';
-
     const svgIcon = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="36" height="36">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40">
             <!-- Sombra -->
             <path d="M12 22s7-7.75 7-13c0-3.87-3.13-7-7-7s-7 3.13-7 7c0 5.25 7 13 7 13z" fill="black" fill-opacity="0.2" transform="translate(1, 1)" />
-            <!-- Pin Principal -->
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${color}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" />
-            <!-- Icono Interno -->
+            <!-- Pin Cuerpo -->
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${color}" stroke="white" stroke-width="1.5" />
+            <!-- Icono Blanco Centrado -->
             <g transform="translate(6, 4) scale(0.5)" fill="white">
-                <path d="${iconPath}" />
+                <path d="${selectedIcon}" stroke="white" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" />
             </g>
+            ${isApproximate ? '<circle cx="12" cy="9" r="9" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="2,2" />' : ''}
         </svg>
     `;
 
     return L.divIcon({
         className: 'custom-leaflet-icon',
         html: svgIcon,
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-        popupAnchor: [0, -36]
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40]
     });
 };
 
