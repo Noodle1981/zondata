@@ -160,7 +160,7 @@ const MapComponent = () => {
 
             {/* Collapsible Sidebar */}
             <div 
-                className={`absolute top-0 left-0 h-full w-80 bg-white shadow-2xl transition-transform duration-300 ease-in-out z-[999] flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                className={`absolute top-0 left-0 h-full w-80 bg-white shadow-2xl transition-transform duration-300 ease-in-out z-[999] flex flex-col overflow-hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
                 style={{ zIndex: 999 }}
             >
                 <div className="w-full bg-white border-b border-gray-200">
@@ -189,7 +189,7 @@ const MapComponent = () => {
                     </div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto bg-[#F4F4F4]">
+                <div className="flex-1 min-h-0 flex flex-col bg-[#F4F4F4]">
                     {/* Navegación por Pestañas de Categoría */}
                     <div className="bg-white border-b border-gray-200 p-2">
                         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
@@ -218,7 +218,7 @@ const MapComponent = () => {
                     </div>
 
                     {/* Área de Filtros Dinámicos */}
-                    <div className="bg-white border-b border-gray-200 px-4 py-3 min-h-[160px]">
+                    <div className="bg-white border-b border-gray-200 px-4 py-3">
                         <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
                             {activeTab === 'wind' && "Opciones de Viento"}
                             {activeTab === 'accident' && "Opciones de Tránsito"}
@@ -264,7 +264,7 @@ const MapComponent = () => {
                         </div>
                     </div>
 
-                    <div className="p-4">
+                    <div className="flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar">
                         {/* Barra de estado del sistema — prominente */}
                         <div className={`mb-4 rounded-xl border-2 p-3 transition-all ${
                             loading
@@ -329,47 +329,43 @@ const MapComponent = () => {
                             </span>
                         </div>
                         
-                        {filteredIncidents.length === 0 ? (
-                            <p className="text-sm text-gray-500 italic">No hay incidentes para los filtros seleccionados.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {filteredIncidents.map(incident => {
-                                    // Determinar color de la tarjeta según categoría
-                                    let borderColor = '#002D62'; // Por defecto
-                                    if (['arboles', 'corte', 'incendio', 'techo'].includes(incident.category?.slug)) {
-                                        borderColor = '#F28C28'; // Viento: Naranja
-                                    } else if (['choque', 'vuelco', 'atropello'].includes(incident.category?.slug)) {
-                                        borderColor = '#DC2626'; // Accidente: Rojo
-                                    } else if (incident.category?.slug?.startsWith('incendio')) {
-                                        borderColor = '#B91C1C'; // Incendio: Rojo Oscuro
-                                    }
-                                    
-                                    return (
-                                                <div key={incident.id} className="bg-white p-3 rounded shadow-sm border-l-4 relative overflow-hidden" style={{ borderColor }}>
-                                                    {incident.is_approximate && (
-                                                        <div className="absolute top-0 right-0 px-2 py-0.5 bg-gray-100 text-[8px] text-gray-500 rounded-bl font-bold uppercase tracking-wider">
-                                                            Aproximado
-                                                        </div>
-                                                    )}
-                                                    <h3 className="font-bold text-[#002D62] text-sm">{incident.title}</h3>
-                                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
-                                                    <div className="mt-2 flex items-center justify-between">
-                                                        <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
-                                                            {incident.category?.name || 'Evento'}
-                                                        </span>
-                                                        <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
-                                                            Fuente: {incident.source_name}
-                                                        </a>
-                                                    </div>
-                                                </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <div className="space-y-3">
+                            {filteredIncidents.map(incident => {
+                                // Determinar color de la tarjeta según categoría
+                                let borderColor = '#002D62'; // Por defecto
+                                if (['arboles', 'corte', 'incendio', 'techo'].includes(incident.category?.slug)) {
+                                    borderColor = '#F28C28'; // Viento: Naranja
+                                } else if (['choque', 'vuelco', 'atropello'].includes(incident.category?.slug)) {
+                                    borderColor = '#DC2626'; // Accidente: Rojo
+                                } else if (incident.category?.slug?.startsWith('incendio')) {
+                                    borderColor = '#B91C1C'; // Incendio: Rojo Oscuro
+                                }
+                                
+                                return (
+                                    <div key={incident.id} className="bg-white p-3 rounded shadow-sm border-l-4 relative overflow-hidden" style={{ borderColor }}>
+                                        {incident.is_approximate && (
+                                            <div className="absolute top-0 right-0 px-2 py-0.5 bg-gray-100 text-[8px] text-gray-500 rounded-bl font-bold uppercase tracking-wider">
+                                                Aproximado
+                                            </div>
+                                        )}
+                                        <h3 className="font-bold text-[#002D62] text-sm">{incident.title}</h3>
+                                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
+                                        <div className="mt-2 flex items-center justify-between">
+                                            <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
+                                                {incident.category?.name || 'Evento'}
+                                            </span>
+                                            <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                                                Fuente: {incident.source_name}
+                                            </a>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
 
                     {/* CTA Dataset Completo */}
-                    <div className="p-4 mt-2">
+                    <div className="mt-2">
                         <button 
                             className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-4 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
                             onClick={() => alert("Próximamente: Suscríbete para acceder al dataset histórico completo y herramientas de análisis avanzado.")}
@@ -405,7 +401,7 @@ const MapComponent = () => {
 
             {/* Map Area */}
             <div className="flex-1 h-full relative z-0">
-                <MapContainer center={position} zoom={8} className="w-full h-full" zoomControl={false}>
+                <MapContainer center={position} zoom={8} className="w-full h-full custom-map-cursor" zoomControl={false}>
                     {/* Position zoom control on the right to avoid sidebar overlap */}
                     <ZoomControl position="bottomright" />
                     

@@ -7,5 +7,36 @@
 
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+@layer base {
+    /* Custom Scrollbar for the sidebar */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #F28C28;
+        border-radius: 10px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #d97a1d;
+    }
+
+    /* Cursor personalizado para el Mapa */
+    .custom-map-cursor {
+        cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='%23002D62'><path d='M7 2l12 11.2-5.8.8 3.5 6-2.1 1.2-3.5-6.1L7 19z'/></svg>") 0 0, auto !important;
+    }
+
+    /* Firefox support */
+    .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #F28C28 #f1f1f1;
+    }
 }

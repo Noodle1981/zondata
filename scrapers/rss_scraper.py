@@ -9,15 +9,41 @@ from geopy.exc import GeocoderTimedOut
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Configuración Global
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/xml,text/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5'
+}
+
 API_URL = "http://zondata.test/api/incidents"
 RSS_FEEDS = [
-    "https://diariodecuyo.com.ar/rss/rss.xml",
-    "https://www.tiempodesanjuan.com/rss/",
-    "https://www.diariohuarpe.com/feed",
+    "https://diariodecuyo.com.ar/rss/pages/policiales.xml",
+    "https://diariodecuyo.com.ar/rss/pages/san-juan.xml",
+    "https://www.tiempodesanjuan.com/rss/pages/Policiales.xml",
+    "https://www.tiempodesanjuan.com/rss/pages/home.xml",
+    "https://www.diariohuarpe.com/rss/policiales.xml",
+    "https://www.diariohuarpe.com/rss/portada.xml",
     "https://www.nuevodiariosanjuan.com.ar/feed",
-    "https://www.diariomovil.info/feed",
-    "https://www.diarioelzonda.com.ar/feed",
-    "https://www.sanjuan8.com/rss"
+    "https://www.diariolaprovinciasj.com/rss",
+    "https://www.sanjuan8.com/rss",
+    "https://canal4sanjuan.com.ar/feed/",
+    "https://www.canal13sanjuan.com/rss",
+    "https://nuevomundosj.com.ar/category/policiales/feed/",
+    "https://www.telesoldiario.com/rss"
+]
+
+# Fuentes HTML (Sin RSS)
+HTML_SOURCES = [
+    {
+        "url": "https://diariomovil.info/categoria/4/san-juan",
+        "medio": "Diario Móvil",
+        "article_selector": r'<div class="post">.*?<a[^>]*href="([^"]+)"[^>]*>.*?<h[23][^>]*>(.*?)</h[23]>.*?<div class="post__resumen">(.*?)</div>',
+    },
+    {
+        "url": "https://www.0264noticias.com.ar/policiales",
+        "medio": "0264Noticias",
+        "article_selector": r'<a[^>]*class="[^"]*w-full[^"]*"[^>]*href="(/noticias/[^"]+)"[^>]*>.*?<h3[^>]*>(.*?)</h3>\s*(?:<h2[^>]*>)?(.*?)(?:</h2>)?\s*</a>',
+    }
 ]
 
 # Palabras de contexto Viento
@@ -27,7 +53,50 @@ CONTEXT_WIND = ["zonda", "viento sur", "ráfagas", "viento", "vientos"]
 CONTEXT_ACCIDENT = ["accidente", "siniestro", "tránsito", "transito", "choque", "vuelco", "vial"]
 
 # Palabras de contexto Incendios
-CONTEXT_FIRE = ["incendio", "fuego", "bomberos", "llamas"]
+CONTEXT_FIRE = ["incendio", "llamas", "bomberos", "quemó", "siniestro ígneo"]
+# Nota: Quitamos "fuego" solo porque suele venir de "arma de fuego" en policiales.
+# Lo usaremos con más cuidado abajo.
+
+FIRE_MAPPING = {
+    "incendio": ["incendio", "llamas", "bomberos", "fuego"]
+}
+
+# Lista Negra de Provincias/Países para evitar fugas geográficas
+BLACKLIST_PROVINCIAS = ["santa fe", "mendoza", "buenos aires", "córdoba", "cordoba", "san luis", "chile", "nacional", "rosario"]
+
+# Configuración Geográfica (San Juan)
+# Bounding Box: [min_lat, max_lat, min_lon, max_lon]
+BOUNDING_BOX = [-32.7, -28.2, -70.6, -66.5]
+
+DEPARTAMENTOS = [
+    "Capital", "Rawson", "Rivadavia", "Chimbas", "Santa Lucía", 
+    "Pocito", "Caucete", "Jáchal", "Albardón", "Sarmiento", 
+    "25 de Mayo", "9 de Julio", "San Martín", "Angaco", 
+    "Valle Fértil", "Iglesia", "Calingasta", "Ullum", "Zonda"
+]
+
+LOCALIDADES = [
+    "Talacasto", "Media Agua", "Barreal", "Rodeo", "Las Flores", 
+    "San José de Jáchal", "Jachal", "San Agustín", "Bermejo", 
+    "Difunta Correa", "Niquivil", "Huaco", "Tudcum", "Pampa del Chañar",
+    "Villa El Salvador", "Angualasto", "Tamberías", "Hilario", "Sondeo"
+]
+
+def is_within_bounds(lat, lon):
+    return BOUNDING_BOX[0] <= lat <= BOUNDING_BOX[1] and BOUNDING_BOX[2] <= lon <= BOUNDING_BOX[3]
+
+def get_local_context(text):
+    # 1. Priorizar localidades específicas (Parajes)
+    for loc in LOCALIDADES:
+        if loc.lower() in text.lower():
+            return f"{loc}, San Juan, Argentina"
+            
+    # 2. Buscar departamentos
+    for dept in DEPARTAMENTOS:
+        if dept.lower() in text.lower():
+            return f"{dept}, San Juan, Argentina"
+            
+    return "San Juan, Argentina"
 
 # Lista Negra
 BLACKLIST_KEYWORDS = ["alerta", "pronóstico", "pronostico", "precaución", "precaucion", "recomiendan", "prevención", "prevencion", "llegaría", "llegaria", "internacional", "mundo"]
@@ -41,9 +110,9 @@ WIND_MAPPING = {
 }
 
 ACCIDENT_MAPPING = {
-    "choque": ["choque", "colisión", "impacto", "chocó", "impactó", "siniestro"],
-    "vuelco": ["vuelco", "volcó", "despistó"],
-    "atropello": ["atropelló", "embistió", "peatón", "arrolló"]
+    "choque": ["choque", "colisión", "impacto", "chocó", "impactó", "siniestro", "accidente", "vial"],
+    "vuelco": ["vuelco", "volcó", "despistó", "cayó", "caída", "caida"],
+    "atropello": ["atropelló", "embistió", "peatón", "arrolló", "moto", "motociclista"]
 }
 
 # Mapeo de Incendios (Independiente)
@@ -71,31 +140,54 @@ def get_coordinates(query, attempts=3):
     return None
 
 def geocoding_funnel(text):
-    # Nivel 1: Búsqueda Directa (Intersecciones)
-    # Patrones comunes: "Calle X e Y", "Calle X y Calle Y", "Avenida X y Calle Y"
-    # Ahora más flexible con los nombres de las calles
+    # 1. Intentar con patrones específicos (KM, Cruce de calles, altura, etc)
     patterns = [
-        r"([Cc]alle|[Aa]v\.?|[Aa]venida)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+)*)\s+(?:y|e|intersección\s+con)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+)*)",
-        r"esquina\s+de\s+([A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+)*)\s+y\s+([A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú0-9]+)*)"
+        # Patrón de Kilómetro (Muy preciso)
+        r"([Rr]uta\s+\d+)\s+(?:[Kk]m\.?|[Kk]il[óo]metro)\s+(\d+)",
+        # Patrón de Intersecciones
+        r"([Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)\s+([A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+)*)\s+(?:y|e|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s+([A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+)*)",
+        # Patrón de Rutas Genéricas
+        r"([Rr]uta\s+\d+)",
+        # Lugares de Referencia
+        r"([Aa]eropuerto|[Tt]erminal|[Cc]entro|[Pp]laza)\s+([A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+)*)"
     ]
+    
+    local_context = get_local_context(text)
     
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
-            query = f"{match.group(1)} {match.group(2)} y {match.group(3)}" if len(match.groups()) == 3 else f"{match.group(1)} y {match.group(2)}"
-            coords = get_coordinates(query)
-            if coords:
-                return coords # (lat, lon, is_approximate=False)
+            query = " ".join(filter(None, match.groups()))
+            try:
+                # Intentar búsqueda con el contexto local (Ej: "Ruta 40 km 70, Talacasto")
+                location = geolocator.geocode(f"{query}, {local_context}", timeout=10)
+                if location and is_within_bounds(location.latitude, location.longitude):
+                    return location.latitude, location.longitude, False
+            except:
+                pass
+    
+    # 2. Si no hay patrón, buscar por parajes/localidades mencionadas (Aproximación por punto de interés)
+    for loc in LOCALIDADES:
+        if loc.lower() in text.lower():
+            try:
+                location = geolocator.geocode(f"{loc}, San Juan, Argentina", timeout=10)
+                if location and is_within_bounds(location.latitude, location.longitude):
+                    return location.latitude, location.longitude, True
+            except:
+                pass
 
-    # Nivel 3: Aproximación Zonal (Municipios)
-    for muni in MUNICIPIOS_SJ:
-        if muni.lower() in text.lower():
-            coords = get_coordinates(muni)
-            if coords:
-                return coords[0], coords[1], True # (lat, lon, is_approximate=True)
+    # 3. Departamentos (Aproximación por municipio)
+    for dept in DEPARTAMENTOS:
+        if dept.lower() in text.lower():
+            try:
+                location = geolocator.geocode(f"{dept}, San Juan, Argentina", timeout=10)
+                if location and is_within_bounds(location.latitude, location.longitude):
+                    return location.latitude, location.longitude, True
+            except:
+                pass
 
-    # Nivel 4: Último Recurso (KM 0)
-    return KM0_SAN_JUAN[0], KM0_SAN_JUAN[1], True
+    # 4. Último recurso: KM 0
+    return -31.5375, -68.53639, True
 
 # Mapeo de nombres de medios
 MEDIA_NAMES = {
@@ -105,7 +197,12 @@ MEDIA_NAMES = {
     "nuevodiariosanjuan.com.ar": "Nuevo Diario",
     "diariomovil.info": "Diario Móvil",
     "diarioelzonda.com.ar": "Diario El Zonda",
-    "sanjuan8.com": "San Juan 8"
+    "sanjuan8.com": "San Juan 8",
+    "diariolaprovinciasj.com": "Diario La Provincia",
+    "canal4sanjuan.com.ar": "Canal 4 San Juan",
+    "canal13sanjuan.com": "Diario 13 San Juan",
+    "nuevomundosj.com.ar": "Nuevo Mundo",
+    "telesoldiario.com": "Telesol Diario"
 }
 
 def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
@@ -130,11 +227,23 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
     
     # 3. Chequear si es un Incendio (Independiente)
     if not detected_category and any(word in text_to_search for word in CONTEXT_FIRE):
-        detected_category = "incendio" # Genérico por defecto
-        for slug, keywords in FIRE_MAPPING.items():
-            if any(kw in text_to_search for kw in keywords):
-                detected_category = slug
-                break
+        # Exclusión específica: arma de fuego no es un incendio
+        if "arma de fuego" in text_to_search or "disparó" in text_to_search:
+            pass
+        else:
+            detected_category = "incendio"
+            for slug, keywords in FIRE_MAPPING.items():
+                if any(kw in text_to_search for kw in keywords):
+                    detected_category = slug
+                    break
+    
+    # 4. Validar que no sea una noticia de otra provincia (Fuga Geográfica)
+    # Si menciona una provincia prohibida y NO menciona San Juan o un departamento, descartar.
+    mentions_other_province = any(prov in text_to_search for prov in BLACKLIST_PROVINCIAS)
+    mentions_local = any(loc.lower() in text_to_search for loc in LOCALIDADES) or any(dept.lower() in text_to_search for dept in DEPARTAMENTOS)
+    
+    if mentions_other_province and not mentions_local:
+        return None
                 
     if not detected_category:
         return None
@@ -162,7 +271,7 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
 
 def send_to_api(incident_data):
     try:
-        res = requests.post(API_URL, json=incident_data, headers={'Accept': 'application/json'})
+        res = requests.post(API_URL, json=incident_data, headers={'Accept': 'application/json', 'User-Agent': HEADERS['User-Agent']})
         if res.status_code == 201:
             print(f"[OK] Incidente guardado: {incident_data['fuente_nombre']} - {incident_data['titulo']}")
         elif res.status_code == 200:
@@ -171,6 +280,33 @@ def send_to_api(incident_data):
             print(f"[ERROR] {res.status_code}: {res.text}")
     except Exception as e:
         print(f"[CONEXION FALLIDA] No se pudo enviar a la API: {e}")
+
+def scrape_html():
+    print(f"[{datetime.now()}] Iniciando barrido HTML...")
+    for source in HTML_SOURCES:
+        try:
+            print(f"Scrapeando HTML: {source['medio']} ({source['url']})")
+            response = requests.get(source['url'], headers=HEADERS, timeout=15, verify=False)
+            if response.status_code == 200:
+                html = response.text
+                # Usar regex para extraer noticias del HTML (Estrategia ligera sin BeautifulSoup)
+                matches = re.finditer(source['article_selector'], html, re.DOTALL)
+                for match in matches:
+                    link = match.group(1)
+                    title = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+                    desc = re.sub(r'<[^>]+>', '', match.group(3)).strip()
+                    
+                    if not link.startswith('http'):
+                        from urllib.parse import urlparse
+                        parsed_uri = urlparse(source['url'])
+                        domain = '{uri.scheme}://{uri.netloc}'.format(uri=parsed_uri)
+                        link = domain + link
+                    
+                    incident = analyze_news(title, desc, link, source['medio'])
+                    if incident:
+                        send_to_api(incident)
+        except Exception as e:
+            print(f"Error procesando HTML de {source['medio']}: {e}")
 
 def scrape_rss():
     print(f"[{datetime.now()}] Iniciando barrido de RSS...")
@@ -181,12 +317,15 @@ def scrape_rss():
             fuente_nombre = MEDIA_NAMES.get(domain, "Noticias San Juan")
             
             print(f"Leyendo: {fuente_nombre} ({feed_url})")
-            response = requests.get(feed_url, timeout=10, verify=False)
+            response = requests.get(feed_url, headers=HEADERS, timeout=15, verify=False)
             if response.status_code == 200:
                 root = ET.fromstring(response.content)
                 for item in root.findall('.//item'):
-                    title = item.find('title').text if item.find('title') is not None else ''
-                    desc = item.find('description').text if item.find('description') is not None else ''
+                    title_tag = item.find('title')
+                    desc_tag = item.find('description')
+                    
+                    title = title_tag.text if title_tag is not None and title_tag.text else ''
+                    desc = desc_tag.text if desc_tag is not None and desc_tag.text else ''
                     link = item.find('link').text if item.find('link') is not None else ''
                     
                     if title:
@@ -194,6 +333,9 @@ def scrape_rss():
                         if incident:
                             send_to_api(incident)
                             time.sleep(1) # Respetar rate limiting de Nominatim
+                        else:
+                            # Opcional: print(f"[IGNORADO] {title[:50]}...")
+                            pass
         except Exception as e:
             print(f"Error procesando el feed {feed_url}: {e}")
 
@@ -206,7 +348,9 @@ if __name__ == "__main__":
     if args.daemon:
         while True:
             scrape_rss()
+            scrape_html()
             print(f"[{datetime.now()}] Esperando 30 minutos para el próximo barrido...")
             time.sleep(1800) # 30 minutos
     else:
         scrape_rss()
+        scrape_html()
