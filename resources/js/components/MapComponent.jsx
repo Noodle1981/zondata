@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database } from 'lucide-react';
@@ -63,6 +63,24 @@ const createCustomIcon = (type, isApproximate = false, isFatal = false) => {
     });
 };
 
+// Helper component to control map view
+const MapFocus = ({ incident }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (incident && incident.latitude && incident.longitude) {
+            const lat = parseFloat(incident.latitude);
+            const lon = parseFloat(incident.longitude);
+            if (!isNaN(lat) && !isNaN(lon)) {
+                map.flyTo([lat, lon], 14, {
+                    duration: 1.5,
+                    easeLinearity: 0.25
+                });
+            }
+        }
+    }, [incident, map]);
+    return null;
+};
+
 const MapComponent = () => {
     const [incidents, setIncidents] = useState([]);
     // Abrir por defecto en escritorio, cerrado en móvil
@@ -73,71 +91,40 @@ const MapComponent = () => {
     });
     
     // Estados para Filtros
-    const [activeFilters, setActiveFilters] = useState([]);
     const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
-    const [activeTab, setActiveTab] = useState('wind'); // 'wind', 'accident', 'fire'
+    const [visibleTabs, setVisibleTabs] = useState(['wind', 'accident', 'fire']); // Por defecto todos activos
     const [loading, setLoading] = useState(false);
     const [premiumError, setPremiumError] = useState(false);
-    const [filtersExpanded, setFiltersExpanded] = useState(false);
     const [lastSync, setLastSync] = useState(null);       
+    const [selectedIncident, setSelectedIncident] = useState(null);
     const [, setTick] = useState(0);                      // forces re-render every minute for relative time
 
-    // Definir las categorías
-    const windCategories = [
-        { id: 'arboles', name: '🌳 Caída de Árboles / Ramas' },
-        { id: 'corte', name: '⚡ Cortes de Luz' },
-        { id: 'incendio', name: '🔥 Incendios' },
-        { id: 'techo', name: '💨 Voladuras / Otros' }
-    ];
-
-    const accidentCategories = [
-        { id: 'choque', name: '💥 Choque / Colisión' },
-        { id: 'vuelco', name: '🔄 Vuelco' },
-        { id: 'atropello', name: '🚶 Atropello / Peatón' }
-    ];
-
-    const fireCategories = [
-        { id: 'incendio', name: '🔥 Incendio General' },
-        { id: 'incendio-vivienda', name: '🏠 Incendio Vivienda' },
-        { id: 'incendio-pastizales', name: '🌿 Pastizales / Campo' },
-        { id: 'incendio-vehiculo', name: '🚗 Incendio Vehículo' }
-    ];
-
-    const toggleFilter = (categoryId) => {
-        setActiveFilters(prev => 
-            prev.includes(categoryId) 
-                ? prev.filter(f => f !== categoryId) 
-                : [...prev, categoryId]
-        );
+    const toggleTab = (tab) => {
+        setVisibleTabs(prev => {
+            return prev.includes(tab) 
+                ? prev.filter(t => t !== tab) 
+                : [...prev, tab];
+        });
     };
 
-    // Calcular contadores por slug
-    const counts = incidents.reduce((acc, inc) => {
-        const slug = inc.category?.slug;
-        if (slug) acc[slug] = (acc[slug] || 0) + 1;
-        return acc;
-    }, {});
-
+    // Filtrar incidentes según el estado de las pestañas
     const filteredIncidents = incidents.filter(incident => {
         const slug = incident.category?.slug;
-        
-        // 1. Determinar a qué grupo pertenece el incidente
         const isWind = ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug?.includes(k));
         const isAccident = ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug?.includes(k));
         const isFire = slug?.includes('incendio') || slug?.includes('siniestro');
-
-        // 2. Filtrar primero por la pestaña activa
-        if (activeTab === 'wind' && !isWind) return false;
-        if (activeTab === 'accident' && !isAccident) return false;
-        if (activeTab === 'fire' && !isFire) return false;
-
-        // 3. Si hay filtros específicos (checkboxes), filtrar por ellos
-        if (activeFilters.length > 0) {
-            return activeFilters.includes(slug);
-        }
-
-        return true;
+        
+        return (isWind && visibleTabs.includes('wind')) || 
+               (isAccident && visibleTabs.includes('accident')) || 
+               (isFire && visibleTabs.includes('fire'));
     });
+
+    // Calcular conteos por pestaña
+    const tabCounts = {
+        wind: incidents.filter(i => ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => i.category?.slug?.includes(k))).length,
+        accident: incidents.filter(i => ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => i.category?.slug?.includes(k))).length,
+        fire: incidents.filter(i => i.category?.slug?.includes('incendio') || i.category?.slug?.includes('siniestro')).length
+    };
 
     // Relative time helper — "hace X minutos"
     const relativeTime = (date) => {
@@ -240,84 +227,44 @@ const MapComponent = () => {
                 <div className="flex-1 min-h-0 flex flex-col bg-[#F4F4F4]">
                     {/* Navegación por Pestañas de Categoría */}
                     <div className="bg-white border-b border-gray-200 p-2">
-                        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                        <div className="flex gap-4 bg-gray-100 p-2 rounded-xl">
                             <button 
-                                onClick={() => { setActiveTab('wind'); setActiveFilters([]); }}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'wind' ? 'bg-white shadow-sm text-[#EAB308]' : 'text-gray-400 hover:text-gray-600'}`}
+                                onClick={() => toggleTab('wind')}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('wind') ? 'bg-white shadow-sm text-[#EAB308]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
                             >
                                 <Wind size={20} />
                                 <span className="text-[10px] font-bold mt-1 uppercase">Viento</span>
+                                {tabCounts.wind > 0 && (
+                                    <span className="absolute -top-3 -right-3 bg-[#002D62] text-[#F28C28] text-sm font-black w-10 h-10 flex items-center justify-center rounded-full shadow-xl border-2 border-white ring-4 ring-[#002D62]/10">
+                                        {tabCounts.wind}
+                                    </span>
+                                )}
                             </button>
                             <button 
-                                onClick={() => { setActiveTab('accident'); setActiveFilters([]); }}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'accident' ? 'bg-white shadow-sm text-[#DC2626]' : 'text-gray-400 hover:text-gray-600'}`}
+                                onClick={() => toggleTab('accident')}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('accident') ? 'bg-white shadow-sm text-[#DC2626]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
                             >
                                 <Car size={20} />
                                 <span className="text-[10px] font-bold mt-1 uppercase">Tránsito</span>
+                                {tabCounts.accident > 0 && (
+                                    <span className="absolute -top-3 -right-3 bg-[#002D62] text-[#F28C28] text-sm font-black w-10 h-10 flex items-center justify-center rounded-full shadow-xl border-2 border-white ring-4 ring-[#002D62]/10">
+                                        {tabCounts.accident}
+                                    </span>
+                                )}
                             </button>
                             <button 
-                                onClick={() => { setActiveTab('fire'); setActiveFilters([]); }}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all ${activeTab === 'fire' ? 'bg-white shadow-sm text-[#2563EB]' : 'text-gray-400 hover:text-gray-600'}`}
+                                onClick={() => toggleTab('fire')}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('fire') ? 'bg-white shadow-sm text-[#2563EB]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
                             >
                                 <Zap size={20} />
                                 <span className="text-[10px] font-bold mt-1 uppercase">Siniestros</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Área de Filtros Dinámicos Plegable */}
-                    <div className="bg-white border-b border-gray-100 shadow-inner">
-                        <button 
-                            onClick={() => setFiltersExpanded(!filtersExpanded)}
-                            className="w-full px-4 py-3 flex items-center justify-between text-[#002D62] hover:bg-gray-50 transition-colors"
-                        >
-                            <div className="flex items-center gap-2">
-                                <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                                    {activeTab === 'wind' && "Opciones de Viento"}
-                                    {activeTab === 'accident' && "Opciones de Tránsito"}
-                                    {activeTab === 'fire' && "Opciones de Siniestros"}
-                                </h3>
-                                {!filtersExpanded && activeFilters.length > 0 && (
-                                    <span className="bg-[#002D62] text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold">
-                                        {activeFilters.length}
+                                {tabCounts.fire > 0 && (
+                                    <span className="absolute -top-3 -right-3 bg-[#002D62] text-[#F28C28] text-sm font-black w-10 h-10 flex items-center justify-center rounded-full shadow-xl border-2 border-white ring-4 ring-[#002D62]/10">
+                                        {tabCounts.fire}
                                     </span>
                                 )}
-                            </div>
-                            {filtersExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-                        </button>
-                        
-                        {filtersExpanded && (
-                            <div className="px-4 pb-4 space-y-1 animate-in slide-in-from-top-1 duration-200">
-                                {(activeTab === 'wind' ? windCategories : activeTab === 'accident' ? accidentCategories : fireCategories).map(cat => {
-                                    const count = counts[cat.id] || 0;
-                                    const isSelected = activeFilters.includes(cat.id);
-                                    let activeColor = activeTab === 'wind' ? '#EAB308' : activeTab === 'accident' ? '#DC2626' : '#2563EB';
-
-                                    return (
-                                        <label key={cat.id} className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all group ${isSelected ? 'bg-gray-50 shadow-sm' : 'hover:bg-gray-50/50'}`}>
-                                            <div className="flex items-center gap-3">
-                                                <div className="relative flex items-center">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        className="peer appearance-none w-5 h-5 rounded-lg border-2 border-gray-200 checked:border-transparent transition-all"
-                                                        style={{ backgroundColor: isSelected ? activeColor : 'transparent' }}
-                                                        checked={isSelected}
-                                                        onChange={() => toggleFilter(cat.id)}
-                                                    />
-                                                    {isSelected && <Zap size={10} className="absolute left-1.25 text-white pointer-events-none" fill="white" />}
-                                                </div>
-                                                <span className={`text-xs font-bold transition-colors ${isSelected ? 'text-[#002D62]' : 'text-gray-500 group-hover:text-gray-700'}`}>
-                                                    {cat.name}
-                                                </span>
-                                            </div>
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${count > 0 ? 'bg-white border border-gray-100 text-gray-400 shadow-sm' : 'text-gray-300'}`}>
-                                                {count}
-                                            </span>
-                                        </label>
-                                    );
-                                })}
-                            </div>
-                        )}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar">
@@ -423,19 +370,30 @@ const MapComponent = () => {
                                 }
                                 
                                 return (
-                                    <div key={incident.id} className="bg-white p-3 rounded shadow-sm border-l-4 relative overflow-hidden" style={{ borderColor }}>
+                                    <div 
+                                        key={incident.id} 
+                                        onClick={() => setSelectedIncident(incident)}
+                                        className={`bg-white p-3 rounded shadow-sm border-l-4 relative overflow-hidden cursor-pointer transition-all hover:bg-gray-50 active:scale-[0.98] ${selectedIncident?.id === incident.id ? 'ring-2 ring-[#002D62] ring-inset' : ''}`} 
+                                        style={{ borderColor }}
+                                    >
                                         {incident.is_approximate && (
                                             <div className="absolute top-0 right-0 px-2 py-0.5 bg-gray-100 text-[8px] text-gray-500 rounded-bl font-bold uppercase tracking-wider">
                                                 Aproximado
                                             </div>
                                         )}
-                                        <h3 className="font-bold text-[#002D62] text-sm">{incident.title}</h3>
+                                        <h3 className="font-bold text-[#002D62] text-sm leading-tight">{incident.title}</h3>
                                         <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
                                         <div className="mt-2 flex items-center justify-between">
                                             <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
                                                 {incident.category?.name || 'Evento'}
                                             </span>
-                                            <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                                            <a 
+                                                href={incident.source_url} 
+                                                target="_blank" 
+                                                rel="noreferrer" 
+                                                className="text-[10px] text-blue-500 hover:underline z-10"
+                                                onClick={(e) => e.stopPropagation()} // Evita que el mapa se mueva al solo querer abrir la fuente
+                                            >
                                                 Fuente: {incident.source_name}
                                             </a>
                                         </div>
@@ -483,6 +441,7 @@ const MapComponent = () => {
             {/* Map Area */}
             <div className="flex-1 h-full relative z-0">
                 <MapContainer center={position} zoom={8} className="w-full h-full custom-map-cursor" zoomControl={false}>
+                    <MapFocus incident={selectedIncident} />
                     {/* Position zoom control on the right to avoid sidebar overlap */}
                     <ZoomControl position="bottomright" />
                     

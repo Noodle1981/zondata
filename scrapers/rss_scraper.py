@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 import time
 import re
 from datetime import datetime
+import html
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 
@@ -50,7 +51,7 @@ HTML_SOURCES = [
 CONTEXT_WIND = ["zonda", "viento sur", "ráfagas", "viento", "vientos"]
 
 # Palabras de contexto Accidentes
-CONTEXT_ACCIDENT = ["accidente", "siniestro", "tránsito", "transito", "choque", "vuelco", "vial"]
+CONTEXT_ACCIDENT = ["accidente", "siniestro", "tránsito", "transito", "choque", "vuelco", "vial", "falleció", "murió", "muerte", "víctima fatal", "deceso"]
 
 # Palabras de contexto Incendios
 CONTEXT_FIRE = ["incendio", "llamas", "bomberos", "quemó", "siniestro ígneo"]
@@ -106,7 +107,12 @@ def get_local_context(text):
     return "San Juan, Argentina"
 
 # Lista Negra
-BLACKLIST_KEYWORDS = ["alerta", "pronóstico", "pronostico", "precaución", "precaucion", "recomiendan", "prevención", "prevencion", "llegaría", "llegaria", "internacional", "mundo"]
+BLACKLIST_KEYWORDS = [
+    "alerta", "pronóstico", "pronostico", "precaución", "precaucion", "recomiendan", 
+    "prevención", "prevencion", "llegaría", "llegaria", "internacional", "mundo",
+    "escuela", "curso", "capacitación", "capacitacion", "proyecto", "campaña", 
+    "historia de", "entrevista", "emicar", "clases", "inscripción", "inscripcion"
+]
 
 # Mapeos de categorías
 WIND_MAPPING = {
@@ -151,12 +157,14 @@ def geocoding_funnel(text):
     patterns = [
         # Patrón de Kilómetro (Muy preciso)
         r"([Rr]uta\s+\d+)\s+(?:[Kk]m\.?|[Kk]il[óo]metro)\s+(\d+)",
-        # Patrón de Intersecciones
-        r"([Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)\s+([A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+)*)\s+(?:y|e|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s+([A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+)*)",
+        # Patrón de Intersecciones (Flexibilizado)
+        r"(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)",
+        # Patrón de Calle y Altura
+        r"([Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s+(?:al|altura)\s+(\d+)",
         # Patrón de Rutas Genéricas
         r"([Rr]uta\s+\d+)",
         # Lugares de Referencia
-        r"([Aa]eropuerto|[Tt]erminal|[Cc]entro|[Pp]laza)\s+([A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+(?:\s+[A-ZÁÉÍÓÚ0-9][a-zñáéíóú0-9]+)*)"
+        r"([Aa]eropuerto|[Tt]erminal|[Cc]entro|[Pp]laza|[Bb]arrio|[Vv]illa)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)"
     ]
     
     local_context = get_local_context(text)
@@ -193,8 +201,11 @@ def geocoding_funnel(text):
             except:
                 pass
 
-    # 4. Último recurso: KM 0
-    return -31.5375, -68.53639, True
+    # 4. Último recurso: KM 0 (Solo si es claramente de San Juan por contexto)
+    if any(loc.lower() in text.lower() for loc in LOCALIDADES) or any(dept.lower() in text.lower() for dept in DEPARTAMENTOS) or "san juan" in text.lower():
+        return -31.5375, -68.53639, True
+        
+    return None # Si no hay nada que lo ate a San Juan, mejor no registrarlo
 
 # Mapeo de nombres de medios
 MEDIA_NAMES = {
@@ -256,18 +267,27 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
         return None
         
     # Aplicar Embudo de Geolocalización
-    # Intentar Nivel 1 en el título
     res = geocoding_funnel(title)
     if res and not res[2]: # Si encontró algo exacto
         lat, lon, is_approx = res
     else:
         # Si no, intentar en el texto completo
-        lat, lon, is_approx = geocoding_funnel(title + " " + description)
+        full_res = geocoding_funnel(title + " " + description)
+        if full_res:
+            lat, lon, is_approx = full_res
+        else:
+            return None # Si no hay ubicación ni contexto local, descartar
     
     # 5. Detectar si hay una muerte confirmada
     is_fatal = None
     if any(kw in text_to_search for kw in FATAL_KEYWORDS):
         is_fatal = True
+
+    # 6. Detectar si ocurrió ayer
+    event_date = datetime.now()
+    if "ayer" in text_to_search or "anoche" in text_to_search:
+        from datetime import timedelta
+        event_date = event_date - timedelta(days=1)
 
     return {
         "etiqueta": detected_category,
@@ -279,6 +299,7 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
         "is_fatal": is_fatal,
         "fuente_nombre": fuente_nombre,
         "fuente_url": link,
+        "event_date": event_date.strftime("%Y-%m-%d %H:%M:%S"),
         "verificado": False
     }
 
@@ -306,8 +327,8 @@ def scrape_html():
                 matches = re.finditer(source['article_selector'], html, re.DOTALL)
                 for match in matches:
                     link = match.group(1)
-                    title = re.sub(r'<[^>]+>', '', match.group(2)).strip()
-                    desc = re.sub(r'<[^>]+>', '', match.group(3)).strip()
+                    title = html.unescape(re.sub(r'<[^>]+>', '', match.group(2)).strip())
+                    desc = html.unescape(re.sub(r'<[^>]+>', '', match.group(3)).strip())
                     
                     if not link.startswith('http'):
                         from urllib.parse import urlparse
@@ -337,8 +358,8 @@ def scrape_rss():
                     title_tag = item.find('title')
                     desc_tag = item.find('description')
                     
-                    title = title_tag.text if title_tag is not None and title_tag.text else ''
-                    desc = desc_tag.text if desc_tag is not None and desc_tag.text else ''
+                    title = html.unescape(title_tag.text if title_tag is not None and title_tag.text else '')
+                    desc = html.unescape(desc_tag.text if desc_tag is not None and desc_tag.text else '')
                     link = item.find('link').text if item.find('link') is not None else ''
                     
                     if title:
