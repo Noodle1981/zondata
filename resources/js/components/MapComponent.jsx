@@ -185,6 +185,7 @@ const MapComponent = () => {
                     onClick={() => setSidebarOpen(true)}
                     className="absolute top-4 left-4 z-[1000] bg-white p-2 rounded shadow-md text-[#002D62] hover:bg-gray-100 transition-colors"
                     style={{ zIndex: 1000 }} // Ensure it's above the map
+                    aria-label="Abrir menú lateral"
                 >
                     <Menu size={24} />
                 </button>
@@ -204,7 +205,11 @@ const MapComponent = () => {
                     <div className="p-4 border-b border-gray-100 bg-white">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Consultar Fecha</h3>
-                            <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-gray-600">
+                            <button 
+                                onClick={() => setSidebarOpen(false)} 
+                                className="md:hidden text-gray-400 hover:text-gray-600"
+                                aria-label="Cerrar panel"
+                            >
                                 <X size={20} />
                             </button>
                         </div>
