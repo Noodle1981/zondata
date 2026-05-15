@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { es } from 'date-fns/locale/es';
 import L from 'leaflet';
 import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database } from 'lucide-react';
 
@@ -205,7 +208,7 @@ const MapComponent = () => {
                     {/* Selector de Fecha Estilizado en Azul */}
                     <div className="p-4 border-b border-gray-100 bg-white">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Consultar Fecha</h3>
+                            <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#A3BFD9]">Consultar Fecha</h3>
                             <button 
                                 onClick={() => setSidebarOpen(false)} 
                                 className="md:hidden text-gray-400 hover:text-gray-600"
@@ -216,19 +219,33 @@ const MapComponent = () => {
                         </div>
                         
                         <div className="relative group">
-                            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-[#EAB308] z-10">
-                                <Calendar size={16} />
+                            {/* Icono Izquierda (Oro) */}
+                            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-[#EAB308] z-10">
+                                <Calendar size={20} strokeWidth={2.5} />
                             </div>
-                            <input 
-                                type="date" 
-                                id="incident-date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                max={new Date().toISOString().split('T')[0]}
-                                className="w-full bg-[#002552] border-2 border-[#001d40] rounded-xl py-2.5 pl-10 pr-4 text-sm font-black text-white focus:ring-2 focus:ring-[#EAB308] focus:border-transparent outline-none transition-all shadow-lg shadow-blue-900/20 appearance-none"
-                                style={{ colorScheme: 'dark' }} // Asegura que el icono del calendario nativo sea visible en oscuro
+                            
+                            <DatePicker
+                                selected={selectedDate ? new Date(selectedDate + 'T12:00:00') : null}
+                                onChange={(date) => {
+                                    if (date) {
+                                        const year = date.getFullYear();
+                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                        const day = String(date.getDate()).padStart(2, '0');
+                                        setSelectedDate(`${year}-${month}-${day}`);
+                                    }
+                                }}
+                                locale={es}
+                                dateFormat="dd/MM/yyyy"
+                                maxDate={new Date()}
+                                className="w-full bg-[#002552] border-none rounded-2xl py-4 pl-12 pr-12 text-lg font-black text-white focus:ring-4 focus:ring-[#EAB308]/20 outline-none transition-all shadow-xl shadow-blue-950/40 text-center tracking-wider cursor-pointer"
                                 aria-label="Seleccionar fecha de incidentes"
+                                calendarClassName="premium-calendar"
                             />
+
+                            {/* Icono Derecha (Blanco) */}
+                            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-white/60 z-10">
+                                <Calendar size={18} />
+                            </div>
                         </div>
                     </div>
                 

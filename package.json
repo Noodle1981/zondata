@@ -6,7 +6,8 @@
         "build": "vite build",
         "dev": "vite",
         "scraper": "python scrapers/rss_scraper.py --daemon",
-        "start": "concurrently --names \"VITE,SCRAPER\" --prefix-colors \"cyan,yellow\" \"vite\" \"python scrapers/rss_scraper.py --daemon\""
+        "test:sources": "python scrapers/test_sources.py",
+        "start": "concurrently --names \"VITE,SCRAPER\" --prefix-colors \"cyan,yellow\" \"npm run dev\" \"npm run scraper\""
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
@@ -17,9 +18,11 @@
         "vite": "^8.0.0"
     },
     "dependencies": {
+        "date-fns": "^4.1.0",
         "leaflet": "^1.9.4",
         "lucide-react": "^1.14.0",
         "react": "^19.2.6",
+        "react-datepicker": "^9.1.0",
         "react-dom": "^19.2.6",
         "react-leaflet": "^5.0.0"
     }
