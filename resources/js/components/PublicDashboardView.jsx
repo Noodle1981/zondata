@@ -26,7 +26,11 @@ import {
     Layers,
     User,
     Gauge,
-    CarFront
+    CarFront,
+    Home,
+    Wheat,
+    Store,
+    Factory
 } from 'lucide-react';
 
 const PublicDashboardView = () => {
@@ -149,6 +153,23 @@ const PublicDashboardView = () => {
     const totalGenders = maleMentions + femaleMentions;
     const malePercent = totalGenders > 0 ? Math.round((maleMentions / totalGenders) * 100) : 70; // 70% default mock ratio if text is neutral
     const femalePercent = totalGenders > 0 ? 100 - malePercent : 30;
+
+    // ==========================================
+    // METRICS CALCULATORS FOR FIRE (Scraping)
+    // ==========================================
+    const fireIncidents = getFilteredIncidents('fire');
+    const fireCounts = {
+        pastizales: fireIncidents.filter(i => matchesKeywords(i, ['pastizales', 'maleza', 'baldío', 'baldio', 'campo', 'hierba', 'yuyos', 'cañaveral', 'pasto', 'matorral'])).length,
+        viviendas: fireIncidents.filter(i => matchesKeywords(i, ['casa', 'vivienda', 'hogar', 'departamento', 'habitación', 'domicilio', 'casilla', 'techo', 'edificio', 'residencia'])).length,
+        comercios: fireIncidents.filter(i => matchesKeywords(i, ['comercio', 'local', 'depósito', 'deposito', 'taller', 'negocio', 'empresa', 'supermercado', 'almacén', 'almacen'])).length,
+        industrias: fireIncidents.filter(i => matchesKeywords(i, ['fábrica', 'fabrica', 'galpón', 'galpon', 'industrial', 'planta', 'parque industrial'])).length,
+        vehiculos: fireIncidents.filter(i => matchesKeywords(i, ['vehículo', 'vehiculo', 'auto', 'camión', 'camion', 'moto', 'colectivo', 'furgón', 'utilitario'])).length,
+        forestales: fireIncidents.filter(i => matchesKeywords(i, ['bosque', 'árboles', 'arboles', 'rama', 'arbolado', 'reserva', 'cerro', 'montaña', 'sierra'])).length,
+        rurales: fireIncidents.filter(i => matchesKeywords(i, ['finca', 'parral', 'cultivo', 'rural', 'chacra', 'callejón', 'bodega', 'viñedo'])).length,
+        otros: 0
+    };
+    // Others is the remainder
+    fireCounts.otros = Math.max(0, fireIncidents.length - Object.values(fireCounts).reduce((a, b) => a + b, 0) + fireCounts.otros);
 
     // ==========================================
     // DYNAMIC DEPARTMENT INCIDENT COUNTS (Chart)
@@ -541,6 +562,92 @@ const PublicDashboardView = () => {
                                 </div>
                             </>
                         )}
+                    </div>
+                )}
+
+                {/* ========================================== */}
+                {/* 2.2 SECCIÓN: TARJETAS DE CONTEO POR TIPO DE INCENDIO */}
+                {/* ========================================== */}
+                {activeSection === 'fire' && (
+                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 mb-8">
+                        <div className="mb-4 text-left">
+                            <h3 className="text-lg font-black text-[#DC2626]">Participación por Tipo de Incendio</h3>
+                            <p className="text-xs text-gray-400 mt-0.5">Cantidad de focos detectados automáticamente mediante procesamiento inteligente de texto.</p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Trees size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Pastizales / Malezas</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.pastizales}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Home size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Casas / Viviendas</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.viviendas}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Store size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Comercios / Locales</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.comercios}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Factory size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Industrias / Galpones</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.industrias}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Car size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Vehículos</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.vehiculos}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Flame size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Forestales / Cerros</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.forestales}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Wheat size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Rurales / Fincas</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.rurales}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Layers size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Otros Focos</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.otros}</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
 
