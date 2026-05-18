@@ -14,7 +14,19 @@ import {
     Clock,
     UserCheck,
     AlertTriangle,
-    ShieldAlert
+    ShieldAlert,
+    Route,
+    RotateCw,
+    Building2,
+    Trees,
+    Bike,
+    Truck,
+    Bus,
+    Footprints,
+    Layers,
+    User,
+    Gauge,
+    CarFront
 } from 'lucide-react';
 
 const PublicDashboardView = () => {
@@ -115,11 +127,13 @@ const PublicDashboardView = () => {
 
     // 4. Vehicle Type Counters
     const vehicleCounts = {
-        autos: trafficIncidents.filter(i => matchesKeywords(i, ['auto', 'automóvil', 'automovil', 'vehículo', 'vehiculo', 'camioneta', 'trafic', 'furgón', 'remís', 'taxi'])).length,
-        motos: trafficIncidents.filter(i => matchesKeywords(i, ['moto', 'motocicleta', 'motociclista', 'ciclomotor'])).length,
-        camiones: trafficIncidents.filter(i => matchesKeywords(i, ['camión', 'camion', 'semirremolque', 'acoplado', 'mosquito'])).length,
-        colectivos: trafficIncidents.filter(i => matchesKeywords(i, ['colectivo', 'micro', 'ómnibus', 'omnibus', 'bus'])).length,
-        peatones: trafficIncidents.filter(i => matchesKeywords(i, ['peatón', 'peaton', 'peatona', 'transeúnte', 'transeunte', 'bici', 'bicicleta', 'ciclista'])).length,
+        autos: trafficIncidents.filter(i => matchesKeywords(i, ['auto', 'automóvil', 'automovil', 'vehículo', 'vehiculo', 'remís', 'taxi'])).length,
+        camionetas: trafficIncidents.filter(i => matchesKeywords(i, ['camioneta', 'pickup', 'pick-up', 'hilux', 'amarok', 'ranger', 'suv', 'trafic', 'furgón'])).length,
+        motos: trafficIncidents.filter(i => matchesKeywords(i, ['moto', 'motocicleta', 'motociclista', 'ciclomotor', 'motomel', 'zanella', 'honda wave'])).length,
+        camiones: trafficIncidents.filter(i => matchesKeywords(i, ['camión', 'camion', 'semirremolque', 'acoplado', 'mosquito', 'chasis'])).length,
+        colectivos: trafficIncidents.filter(i => matchesKeywords(i, ['colectivo', 'micro', 'ómnibus', 'omnibus', 'bus', 'redtulum', 'tulum'])).length,
+        peatones: trafficIncidents.filter(i => matchesKeywords(i, ['peatón', 'peaton', 'peatona', 'transeúnte', 'transeunte'])).length,
+        bicicletas: trafficIncidents.filter(i => matchesKeywords(i, ['bici', 'bicicleta', 'ciclista'])).length,
         otros: 0
     };
     // Others is the remainder
@@ -290,66 +304,124 @@ const PublicDashboardView = () => {
                         {/* Conteo de Accidentes por Tipo de Vía */}
                         <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5">
                             <h3 className="text-lg font-black mb-4">Accidentes por Tipo de Vía</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5">
-                                    <span className="text-[20px]">🛣️</span>
-                                    <h4 className="text-sm font-bold text-gray-300 mt-2">Rutas Nac. / Prov.</h4>
-                                    <p className="text-2xl font-black text-[#2563EB] mt-1">{routeAccidents}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Route size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h4 className="text-xs font-bold text-gray-400">Rutas Nac. / Prov.</h4>
+                                        <p className="text-2xl font-black text-white mt-0.5">{routeAccidents}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5">
-                                    <span className="text-[20px]">🔄</span>
-                                    <h4 className="text-sm font-bold text-gray-300 mt-2">Av. Circunvalación</h4>
-                                    <p className="text-2xl font-black text-[#2563EB] mt-1">{circunvalacionAccidents}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <RotateCw size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h4 className="text-xs font-bold text-gray-400">Av. Circunvalación</h4>
+                                        <p className="text-2xl font-black text-white mt-0.5">{circunvalacionAccidents}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5">
-                                    <span className="text-[20px]">🏙️</span>
-                                    <h4 className="text-sm font-bold text-gray-300 mt-2">Zonas Urbanas</h4>
-                                    <p className="text-2xl font-black text-[#2563EB] mt-1">{urbanAccidents}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Building2 size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h4 className="text-xs font-bold text-gray-400">Zonas Urbanas</h4>
+                                        <p className="text-2xl font-black text-white mt-0.5">{urbanAccidents}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5">
-                                    <span className="text-[20px]">🌳</span>
-                                    <h4 className="text-sm font-bold text-gray-300 mt-2">Zonas Rurales</h4>
-                                    <p className="text-2xl font-black text-[#2563EB] mt-1">{ruralAccidents}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Trees size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h4 className="text-xs font-bold text-gray-400">Zonas Rurales</h4>
+                                        <p className="text-2xl font-black text-white mt-0.5">{ruralAccidents}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         {/* Tarjetas de Conteo por Tipo de Vehículo */}
                         <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5">
-                            <div className="mb-4">
-                                <h3 className="text-lg font-black">Participación por Tipo de Vehículo</h3>
+                            <div className="mb-4 text-left">
+                                <h3 className="text-lg font-black">Participación por Tipo de Vehículo y Actor</h3>
                                 <p className="text-xs text-gray-400 mt-0.5">Cantidad de actores involucrados detectados por procesamiento de texto.</p>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 text-center">
-                                    <span className="text-[24px]">🚗</span>
-                                    <h5 className="text-xs text-gray-400 font-bold mt-2">Autos / Vans</h5>
-                                    <p className="text-xl font-black text-white mt-1">{vehicleCounts.autos}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Car size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Autos</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.autos}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 text-center">
-                                    <span className="text-[24px]">🏍️</span>
-                                    <h5 className="text-xs text-gray-400 font-bold mt-2">Motos</h5>
-                                    <p className="text-xl font-black text-white mt-1">{vehicleCounts.motos}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <CarFront size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Camionetas</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.camionetas}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 text-center">
-                                    <span className="text-[24px]">🚛</span>
-                                    <h5 className="text-xs text-gray-400 font-bold mt-2">Camiones</h5>
-                                    <p className="text-xl font-black text-white mt-1">{vehicleCounts.camiones}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Gauge size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Motos</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.motos}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 text-center">
-                                    <span className="text-[24px]">🚌</span>
-                                    <h5 className="text-xs text-gray-400 font-bold mt-2">Colectivos</h5>
-                                    <p className="text-xl font-black text-white mt-1">{vehicleCounts.colectivos}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Truck size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Camiones</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.camiones}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 text-center">
-                                    <span className="text-[24px]">🚶‍♂️</span>
-                                    <h5 className="text-xs text-gray-400 font-bold mt-2">Peatón / Bici</h5>
-                                    <p className="text-xl font-black text-white mt-1">{vehicleCounts.peatones}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Bus size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Colectivos</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.colectivos}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 text-center">
-                                    <span className="text-[24px]">📦</span>
-                                    <h5 className="text-xs text-gray-400 font-bold mt-2">Otros</h5>
-                                    <p className="text-xl font-black text-white mt-1">{vehicleCounts.otros}</p>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <User size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Peatones</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.peatones}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Bike size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Bicicletas</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.bicicletas}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
+                                        <Layers size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h5 className="text-xs text-gray-400 font-bold">Otros</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.otros}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -362,8 +434,8 @@ const PublicDashboardView = () => {
                             </div>
                             <div className="flex-1 w-full space-y-4">
                                 <div className="flex justify-between text-xs font-bold text-gray-300">
-                                    <span>♂️ Masculino: {malePercent}%</span>
-                                    <span>♀️ Femenino: {femalePercent}%</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#2563EB]"></span>Masculino: {malePercent}%</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-pink-500"></span>Femenino: {femalePercent}%</span>
                                 </div>
                                 <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden flex">
                                     <div className="bg-[#2563EB] h-full transition-all" style={{ width: malePercent + "%" }}></div>
