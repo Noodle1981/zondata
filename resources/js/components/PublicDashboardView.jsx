@@ -61,9 +61,22 @@ const PublicDashboardView = () => {
 
     // Robust category matching logic (replicates MapComponent)
     const getFilteredIncidents = (type) => {
-        if (type === 'general') return incidents;
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth(); // 0-indexed
+
+        const monthlyIncidents = incidents.filter(i => {
+            if (!i.event_date) return false;
+            const parts = i.event_date.split('-');
+            if (parts.length < 2) return false;
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1; // 0-indexed
+            return year === currentYear && month === currentMonth;
+        });
+
+        if (type === 'general') return monthlyIncidents;
         
-        return incidents.filter(i => {
+        return monthlyIncidents.filter(i => {
             const slug = i.category?.slug || '';
             if (type === 'traffic') {
                 return ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k));
@@ -192,6 +205,45 @@ const PublicDashboardView = () => {
     };
     // Others is the remainder
     windCounts.otros = Math.max(0, windIncidents.length - Object.values(windCounts).reduce((a, b) => a + b, 0) + windCounts.otros);
+
+    // ==========================================
+    // DYNAMIC DAILY INCIDENT STATISTICS (Chart)
+    // ==========================================
+    const getDailyStatistics = () => {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        
+        const days = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dayStr = String(d).padStart(2, '0');
+            const monthStr = String(currentMonth + 1).padStart(2, '0');
+            const key = `${currentYear}-${monthStr}-${dayStr}`;
+            days.push({
+                key: key,
+                label: `${d}`,
+                count: 0
+            });
+        }
+
+        currentFilterIncidents.forEach(i => {
+            if (!i.event_date) return;
+            const dateStr = i.event_date.slice(0, 10);
+            const foundDay = days.find(d => d.key === dateStr);
+            if (foundDay) {
+                foundDay.count += 1;
+            }
+        });
+
+        const maxVal = Math.max(...days.map(d => d.count));
+        return days.map(d => ({
+            label: d.label,
+            count: d.count,
+            pct: maxVal > 0 ? Math.round((d.count / maxVal) * 100) + "%" : "0%"
+        }));
+    };
+    const dailyChartData = getDailyStatistics();
 
     // ==========================================
     // DYNAMIC DEPARTMENT INCIDENT COUNTS (Chart)
@@ -801,6 +853,49 @@ const PublicDashboardView = () => {
                         <div className="flex items-center justify-between text-xs text-gray-400 mt-4">
                             <span>* Datos recopilados en tiempo real por ZonData</span>
                             <span className="text-[#F28C28] font-bold">Public Analytics</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mb-8">
+                    {/* Gráfico Analítico Real de Incidentes por Día */}
+                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 text-left flex flex-col justify-between">
+                        <div>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                                <h4 className="text-sm font-black uppercase tracking-wider">
+                                    Incidentes por Día (Mes en Curso)
+                                </h4>
+                                <span className="text-[10px] text-gray-400 bg-white/5 py-1 px-2.5 rounded-md">
+                                    Tendencia de Siniestralidad
+                                </span>
+                            </div>
+                            <div className="h-72 flex items-end gap-1.5 sm:gap-2.5 pt-6 pb-14 border-b border-gray-700/50 overflow-x-auto scrollbar-thin">
+                                {dailyChartData.map((d, i) => {
+                                    let color = "bg-[#002D62]";
+                                    if (activeSection === 'traffic') color = "bg-[#2563EB]";
+                                    if (activeSection === 'fire') color = "bg-[#DC2626]";
+                                    if (activeSection === 'wind') color = "bg-[#F28C28]";
+
+                                    return (
+                                        <div key={i} className="flex-1 min-w-[20px] sm:min-w-[32px] flex flex-col items-center gap-2 group h-full justify-end relative">
+                                            <div className="text-[10px] font-bold text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5">
+                                                {d.count}
+                                            </div>
+                                            <div 
+                                                className={`w-full ${color} rounded-t-sm transition-all group-hover:brightness-110`} 
+                                                style={{ height: d.pct }}
+                                            ></div>
+                                            <span className="text-[9px] md:text-xs text-gray-400 font-bold whitespace-nowrap rotate-[-35deg] origin-top-left translate-y-1 block mt-1">
+                                                Día {d.label}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-400 mt-4">
+                            <span>* Historial diario acumulativo del mes actual</span>
+                            <span className="text-[#F28C28] font-bold">ZonData Evolution</span>
                         </div>
                     </div>
                 </div>
