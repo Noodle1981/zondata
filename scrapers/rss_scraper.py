@@ -83,10 +83,10 @@ HTML_SOURCES = [
 CONTEXT_WIND = ["zonda", "viento sur", "ráfagas", "viento", "vientos"]
 
 # Palabras de contexto Accidentes
-CONTEXT_ACCIDENT = ["accidente", "siniestro", "tránsito", "transito", "choque", "vuelco", "vial", "falleció", "murió", "muerte", "víctima fatal", "deceso"]
+CONTEXT_ACCIDENT = ["accidente", "siniestro vial", "tránsito", "transito", "choque", "vuelco", "vial", "falleció", "murió", "muerte", "víctima fatal", "deceso"]
 
 # Palabras de contexto Incendios
-CONTEXT_FIRE = ["incendio", "llamas", "bomberos", "quemó", "siniestro ígneo"]
+CONTEXT_FIRE = ["incendio", "llamas", "bomberos", "quemó", "quemo", "siniestro ígneo", "fuego", "incineró", "incinero", "quemar", "quemados", "incinerados"]
 
 # Palabras que indican muerte o deceso
 FATAL_KEYWORDS = [
@@ -103,7 +103,7 @@ WIND_MAPPING = {
 }
 
 ACCIDENT_MAPPING = {
-    "choque": ["choque", "colisión", "impacto", "chocó", "impactó", "siniestro", "accidente", "vial"],
+    "choque": ["choque", "colisión", "impacto", "chocó", "impactó", "siniestro vial", "accidente", "vial"],
     "vuelco": ["vuelco", "volcó", "despistó", "cayó", "caída", "caida"],
     "atropello": ["atropelló", "embistió", "peatón", "arrolló", "moto", "motociclista"]
 }
@@ -111,7 +111,7 @@ ACCIDENT_MAPPING = {
 FIRE_MAPPING = {
     "incendio-vivienda": ["casa", "vivienda", "departamento", "edificio", "habitación"],
     "incendio-pastizales": ["pastizales", "campo", "lote", "baldío", "maleza"],
-    "incendio-vehiculo": ["auto", "camioneta", "camión", "vehículo", "moto"]
+    "incendio-vehiculo": ["auto", "camioneta", "camión", "vehículo", "moto", "trafic", "furgón", "furgon", "colectivo"]
 }
 
 # Configuración Geográfica (San Juan)
@@ -266,18 +266,26 @@ def geocoding_funnel(text):
         return -31.5375, -68.53639, True
     return None
 
+def clean_html(text):
+    if not text:
+        return ""
+    # Eliminar etiquetas HTML completas (como <img ... />, <a ...>, etc.)
+    cleaned = re.sub(r'<[^>]+>', '', text)
+    # Reemplazar entidades HTML comunes (como &amp;, &quot;, &#39;)
+    cleaned = html.unescape(cleaned)
+    # Colapsar espacios y saltos de línea adicionales
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
 def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
+    title = clean_html(title)
+    description = clean_html(description)
     text_to_search = (title + " " + description).lower()
     if any(black_word in text_to_search for black_word in BLACKLIST_KEYWORDS):
         return None
     detected_category = None
     if any(word in text_to_search for word in CONTEXT_WIND):
         for slug, keywords in WIND_MAPPING.items():
-            if any(kw in text_to_search for kw in keywords):
-                detected_category = slug
-                break
-    if not detected_category and any(word in text_to_search for word in CONTEXT_ACCIDENT):
-        for slug, keywords in ACCIDENT_MAPPING.items():
             if any(kw in text_to_search for kw in keywords):
                 detected_category = slug
                 break
@@ -292,6 +300,11 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
                 if any(kw in text_to_search for kw in keywords):
                     detected_category = slug
                     break
+    if not detected_category and any(word in text_to_search for word in CONTEXT_ACCIDENT):
+        for slug, keywords in ACCIDENT_MAPPING.items():
+            if any(kw in text_to_search for kw in keywords):
+                detected_category = slug
+                break
     mentions_other_province = any(prov in text_to_search for prov in BLACKLIST_PROVINCIAS)
     mentions_local = any(loc.lower() in text_to_search for loc in LOCALIDADES) or any(dept.lower() in text_to_search for dept in DEPARTAMENTOS)
     if mentions_other_province and not mentions_local:

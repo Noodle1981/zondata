@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { es } from 'date-fns/locale/es';
 import L from 'leaflet';
-import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database } from 'lucide-react';
+import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame } from 'lucide-react';
 
 // Fix for default Leaflet icons in React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -36,10 +36,10 @@ const createCustomIcon = (type, isApproximate = false, isFatal = false, title = 
         color = '#EAB308'; 
         selectedIcon = icons.wind;
     } else if (['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => type.toLowerCase().includes(k))) {
-        color = '#DC2626'; 
+        color = '#2563EB'; 
         selectedIcon = icons.car;
     } else if (type.toLowerCase().includes('incendio') || type.toLowerCase().includes('siniestro')) {
-        color = '#2563EB'; 
+        color = '#DC2626'; 
         selectedIcon = icons.fire;
     }
 
@@ -180,6 +180,19 @@ const MapComponent = () => {
         return () => clearInterval(ticker);
     }, []);
 
+    const markerRefs = useRef({});
+
+    useEffect(() => {
+        if (selectedIncident && markerRefs.current[selectedIncident.id]) {
+            const timer = setTimeout(() => {
+                if (markerRefs.current[selectedIncident.id]) {
+                    markerRefs.current[selectedIncident.id].openPopup();
+                }
+            }, 200);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedIncident]);
+
     return (
         <div className="relative w-full h-screen overflow-hidden flex">
             
@@ -201,27 +214,25 @@ const MapComponent = () => {
                 style={{ zIndex: 999 }}
             >
                     {/* Cabecera Sidebar con Logo Original */}
-                    <div className="bg-white border-b border-gray-100">
-                        <img src="/images/logo.jpeg" alt="ZonData Logo" className="w-full h-auto object-contain" />
+                    <div className="bg-white border-b border-gray-100 pt-3 pb-1 flex justify-center">
+                        <img src="/images/logo.jpeg" alt="ZonData Logo" className="w-[80%] h-auto object-contain" />
                     </div>
 
                     {/* Selector de Fecha Estilizado en Azul */}
-                    <div className="p-4 border-b border-gray-100 bg-white">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#A3BFD9]">Consultar Fecha</h3>
+                    <div className="pt-2 pb-4 px-4 border-b border-gray-100 bg-white">
+                        <div className="flex items-center justify-end mb-2 md:hidden">
                             <button 
                                 onClick={() => setSidebarOpen(false)} 
-                                className="md:hidden text-gray-400 hover:text-gray-600"
+                                className="text-gray-400 hover:text-gray-600"
                                 aria-label="Cerrar panel"
                             >
                                 <X size={20} />
                             </button>
                         </div>
-                        
-                        <div className="relative group">
+                                          <div className="relative group">
                             {/* Icono Izquierda (Oro) */}
-                            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-[#EAB308] z-10">
-                                <Calendar size={20} strokeWidth={2.5} />
+                            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-[#EAB308] z-10">
+                                <Calendar size={15} strokeWidth={2.5} />
                             </div>
                             
                             <DatePicker
@@ -237,14 +248,15 @@ const MapComponent = () => {
                                 locale={es}
                                 dateFormat="dd/MM/yyyy"
                                 maxDate={new Date()}
-                                className="w-full bg-[#002552] border-none rounded-2xl py-4 pl-12 pr-12 text-lg font-black text-white focus:ring-4 focus:ring-[#EAB308]/20 outline-none transition-all shadow-xl shadow-blue-950/40 text-center tracking-wider cursor-pointer"
+                                className="w-full bg-[#002552] border-none rounded-xl py-2.5 pl-9 pr-9 text-sm font-black text-white focus:ring-4 focus:ring-[#EAB308]/20 outline-none transition-all shadow-xl shadow-blue-950/40 text-center tracking-wider cursor-pointer"
+                                wrapperClassName="w-full"
                                 aria-label="Seleccionar fecha de incidentes"
                                 calendarClassName="premium-calendar"
                             />
 
                             {/* Icono Derecha (Blanco) */}
-                            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-white/60 z-10">
-                                <Calendar size={18} />
+                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/60 z-10">
+                                <Calendar size={13} />
                             </div>
                         </div>
                     </div>
@@ -267,7 +279,7 @@ const MapComponent = () => {
                             </button>
                             <button 
                                 onClick={() => toggleTab('accident')}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('accident') ? 'bg-white shadow-sm text-[#DC2626]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('accident') ? 'bg-white shadow-sm text-[#2563EB]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
                             >
                                 <Car size={20} />
                                 <span className="text-[10px] font-bold mt-1 uppercase">Tránsito</span>
@@ -279,10 +291,10 @@ const MapComponent = () => {
                             </button>
                             <button 
                                 onClick={() => toggleTab('fire')}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('fire') ? 'bg-white shadow-sm text-[#2563EB]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
+                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('fire') ? 'bg-white shadow-sm text-[#DC2626]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
                             >
-                                <Zap size={20} />
-                                <span className="text-[10px] font-bold mt-1 uppercase">Siniestros</span>
+                                <Flame size={20} />
+                                <span className="text-[10px] font-bold mt-1 uppercase">Incendios</span>
                                 {tabCounts.fire > 0 && (
                                     <span className="absolute -top-3 -right-3 bg-[#002D62] text-[#F28C28] text-sm font-black w-10 h-10 flex items-center justify-center rounded-full shadow-xl border-2 border-white ring-4 ring-[#002D62]/10">
                                         {tabCounts.fire}
@@ -389,39 +401,19 @@ const MapComponent = () => {
                                 if (['arboles', 'corte', 'techo', 'viento', 'zonda'].includes(incident.category?.slug)) {
                                     borderColor = '#EAB308'; // Viento: Amarillo
                                 } else if (['choque', 'vuelco', 'atropello'].includes(incident.category?.slug)) {
-                                    borderColor = '#DC2626'; // Accidente: Rojo
+                                    borderColor = '#2563EB'; // Accidente: Azul
                                 } else if (incident.category?.slug?.startsWith('incendio') || incident.category?.slug?.includes('siniestro')) {
-                                    borderColor = '#2563EB'; // Siniestro: Azul
+                                    borderColor = '#DC2626'; // Incendio: Rojo
                                 }
                                 
                                 return (
                                     <div 
                                         key={incident.id} 
                                         onClick={() => setSelectedIncident(incident)}
-                                        className={`bg-white p-3 rounded shadow-sm border-l-4 relative overflow-hidden cursor-pointer transition-all hover:bg-gray-50 active:scale-[0.98] ${selectedIncident?.id === incident.id ? 'ring-2 ring-[#002D62] ring-inset' : ''}`} 
+                                        className={`bg-white p-3 rounded shadow-sm border-l-4 relative cursor-pointer transition-all hover:bg-gray-50 active:scale-[0.98] ${selectedIncident?.id === incident.id ? 'ring-2 ring-[#002D62] ring-inset' : ''}`} 
                                         style={{ borderColor }}
                                     >
-                                        {incident.is_approximate && (
-                                            <div className="absolute top-0 right-0 px-2 py-0.5 bg-gray-100 text-[8px] text-gray-500 rounded-bl font-bold uppercase tracking-wider">
-                                                Aproximado
-                                            </div>
-                                        )}
                                         <h3 className="font-bold text-[#002D62] text-sm leading-tight">{incident.title}</h3>
-                                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">{incident.description}</p>
-                                        <div className="mt-2 flex items-center justify-between">
-                                            <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
-                                                {incident.category?.name || 'Evento'}
-                                            </span>
-                                            <a 
-                                                href={incident.source_url} 
-                                                target="_blank" 
-                                                rel="noreferrer" 
-                                                className="text-[10px] text-blue-500 hover:underline z-10"
-                                                onClick={(e) => e.stopPropagation()} // Evita que el mapa se mueva al solo querer abrir la fuente
-                                            >
-                                                Fuente: {incident.source_name}
-                                            </a>
-                                        </div>
                                     </div>
                                 );
                             })}
@@ -431,19 +423,18 @@ const MapComponent = () => {
                     {/* CTA Dataset Completo */}
                     <div className="mt-2">
                         <button 
-                            className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-4 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-3 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
                             onClick={() => alert("Próximamente: Suscríbete para acceder al dataset histórico completo y herramientas de análisis avanzado.")}
                         >
                             <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                                 <Database size={40} />
                             </div>
-                            <div className="relative z-10 flex flex-col items-start gap-1">
-                                <span className="text-[10px] font-bold text-[#F28C28] uppercase tracking-[0.2em]">Acceso Premium</span>
-                                <h4 className="text-white font-bold text-sm">Dataset Completo</h4>
-                                <p className="text-gray-400 text-[10px] text-left leading-tight mt-1">
-                                    Histórico total, exportación CSV/JSON y alertas personalizadas.
-                                </p>
-                                <div className="mt-3 flex items-center gap-2 text-white text-xs font-bold bg-[#F28C28] py-1.5 px-3 rounded-lg">
+                            <div className="relative z-10 flex items-center justify-between w-full gap-2">
+                                <div className="flex flex-col items-start text-left">
+                                    <span className="text-[9px] font-black text-[#F28C28] uppercase tracking-[0.15em] leading-none mb-1">Acceso Premium</span>
+                                    <h4 className="text-white font-bold text-xs leading-none">Dataset Completo</h4>
+                                </div>
+                                <div className="flex items-center text-white text-[10px] font-black uppercase tracking-wider bg-[#F28C28] py-2 px-2.5 rounded-lg shadow-md shrink-0">
                                     Suscribirse ahora
                                 </div>
                             </div>
@@ -452,13 +443,14 @@ const MapComponent = () => {
                 </div>
 
                 {/* Botón para ocultar en la parte inferior del navbar */}
-                <div className="p-4 bg-white border-t border-gray-200">
+                <div className="p-3 bg-white border-t border-gray-100 flex justify-center">
                     <button 
                         onClick={() => setSidebarOpen(false)}
-                        className="w-full flex justify-center items-center gap-2 py-2 bg-gray-100 hover:bg-gray-200 text-[#002D62] rounded font-medium transition-colors"
+                        className="p-2.5 bg-gray-100 hover:bg-gray-200 text-[#002D62] rounded-full transition-colors flex items-center justify-center shadow-sm"
+                        aria-label="Plegar panel"
+                        title="Plegar panel"
                     >
-                        <X size={20} />
-                        Plegar panel
+                        <ChevronLeft size={20} />
                     </button>
                 </div>
             </div>
@@ -477,6 +469,13 @@ const MapComponent = () => {
                     
                     {filteredIncidents.map(incident => (
                         <Marker 
+                            ref={(el) => {
+                                if (el) {
+                                    markerRefs.current[incident.id] = el;
+                                } else {
+                                    delete markerRefs.current[incident.id];
+                                }
+                            }}
                             key={incident.id} 
                             position={[incident.latitude, incident.longitude]}
                             icon={createCustomIcon(incident.category?.slug || '', incident.is_approximate, incident.is_fatal, incident.title)}
