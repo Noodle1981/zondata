@@ -34,7 +34,8 @@ import {
     Leaf,
     Zap,
     ZapOff,
-    Flag
+    Flag,
+    Skull
 } from 'lucide-react';
 
 const PublicDashboardView = () => {
@@ -186,6 +187,7 @@ const PublicDashboardView = () => {
         cableados: windIncidents.filter(i => matchesKeywords(i, ['cable', 'cables', 'tendido', 'cableado', 'poste', 'postes', 'columnas', 'columna'])).length,
         cortes: windIncidents.filter(i => matchesKeywords(i, ['corte', 'cortes', 'luz', 'energía', 'energia', 'apagón', 'apagon', 'sin servicio', 'electricidad', 'sin luz'])).length,
         carteleria: windIncidents.filter(i => matchesKeywords(i, ['cartel', 'carteles', 'semáforo', 'semaforo', 'letrero', 'publicidad', 'semáforos', 'semaforos'])).length,
+        decesos: windIncidents.filter(i => matchesKeywords(i, ['muerto', 'muerta', 'fallecido', 'fallecida', 'deceso', 'víctima fatal', 'victima fatal', 'óbito', 'obito', 'fallece', 'murieron', 'murió', 'murio', 'decesos', 'cuerpo sin vida'])).length,
         otros: 0
     };
     // Others is the remainder
@@ -733,6 +735,15 @@ const PublicDashboardView = () => {
                                 <div className="text-left">
                                     <h5 className="text-xs text-gray-400 font-bold">Cartelería / Semáforos</h5>
                                     <p className="text-2xl font-black text-white mt-0.5">{windCounts.carteleria}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
+                                    <Skull size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Decesos / Fallecidos</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.decesos}</p>
                                 </div>
                             </div>
                             <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
