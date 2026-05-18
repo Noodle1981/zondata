@@ -154,34 +154,47 @@ const PublicDashboardView = () => {
     // DYNAMIC DEPARTMENT INCIDENT COUNTS (Chart)
     // ==========================================
     const getDepartmentStatistics = () => {
+        const SAN_JUAN_DEPARTMENTS = [
+            "Capital", "Chimbas", "Rawson", "Rivadavia", "Santa Lucía",
+            "Pocito", "Sarmiento", "Albardón", "Angaco", "Caucete",
+            "San Martín", "9 de Julio", "25 de Mayo", "Ullum", "Zonda",
+            "Jáchal", "Iglesia", "Calingasta", "Valle Fértil"
+        ];
+
+        // Initialize all departments with 0 counts
         const counts = {};
-        currentFilterIncidents.forEach(i => {
-            const deptName = i.department?.name || 'Sarmiento'; // Sarmiento is most active in mocks
-            counts[deptName] = (counts[deptName] || 0) + 1;
+        SAN_JUAN_DEPARTMENTS.forEach(dept => {
+            counts[dept] = 0;
         });
 
-        // Convert to array and sort
-        const sorted = Object.entries(counts)
-            .map(([label, val]) => ({ label, count: val }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5); // Take top 5
+        // Accumulate incident counts using normalized department names to prevent accent discrepancies
+        currentFilterIncidents.forEach(i => {
+            const deptName = i.department?.name;
+            if (deptName) {
+                const normalizedSearch = deptName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                const matchedDept = SAN_JUAN_DEPARTMENTS.find(d => 
+                    d.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalizedSearch
+                );
+                if (matchedDept) {
+                    counts[matchedDept] += 1;
+                }
+            }
+        });
 
-        if (sorted.length === 0) {
-            return [
-                { label: "Sarmiento", count: 8 },
-                { label: "Pocito", count: 5 },
-                { label: "Capital", count: 4 },
-                { label: "Rivadavia", count: 3 },
-                { label: "Santa Lucía", count: 2 }
-            ];
-        }
+        // Sort departments alphabetically
+        const sortedDepartments = [...SAN_JUAN_DEPARTMENTS].sort((a, b) => a.localeCompare(b));
 
-        // Map values to percentages for the visual bars (max element is 100%)
-        const maxVal = Math.max(...sorted.map(s => s.count));
-        return sorted.map(s => ({
+        const list = sortedDepartments.map(dept => ({
+            label: dept,
+            count: counts[dept]
+        }));
+
+        // Map counts to relative percentages (highest count is 100%)
+        const maxVal = Math.max(...list.map(s => s.count));
+        return list.map(s => ({
             label: s.label,
             count: s.count,
-            pct: maxVal > 0 ? Math.round((s.count / maxVal) * 100) + "%" : "20%"
+            pct: maxVal > 0 ? Math.round((s.count / maxVal) * 100) + "%" : "0%"
         }));
     };
     const departmentChartData = getDepartmentStatistics();
@@ -546,7 +559,7 @@ const PublicDashboardView = () => {
                                     Datos Reales Filtrados
                                 </span>
                             </div>
-                            <div className="h-60 flex items-end gap-4 md:gap-8 pt-6 border-b border-gray-700/50">
+                            <div className="h-72 flex items-end gap-1.5 sm:gap-2.5 pt-6 pb-14 border-b border-gray-700/50 overflow-x-auto scrollbar-thin">
                                 {departmentChartData.map((d, i) => {
                                     let color = "bg-[#002D62]";
                                     if (activeSection === 'traffic') color = "bg-[#2563EB]";
@@ -554,15 +567,17 @@ const PublicDashboardView = () => {
                                     if (activeSection === 'wind') color = "bg-[#F28C28]";
 
                                     return (
-                                        <div key={i} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                                            <div className="text-[10px] font-bold text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div key={i} className="flex-1 min-w-[32px] sm:min-w-[45px] flex flex-col items-center gap-2 group h-full justify-end relative">
+                                            <div className="text-[10px] font-bold text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5">
                                                 {d.count}
                                             </div>
                                             <div 
-                                                className={`w-full ${color} rounded-t-lg transition-all group-hover:brightness-110`} 
+                                                className={`w-full ${color} rounded-t-sm transition-all group-hover:brightness-110`} 
                                                 style={{ height: d.pct }}
                                             ></div>
-                                            <span className="text-xs text-gray-400 font-bold truncate max-w-full text-center">{d.label}</span>
+                                            <span className="text-[9px] md:text-xs text-gray-400 font-bold whitespace-nowrap rotate-[-35deg] origin-top-left translate-y-1 block mt-1">
+                                                {d.label}
+                                            </span>
                                         </div>
                                     );
                                 })}
