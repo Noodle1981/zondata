@@ -534,96 +534,9 @@ const PublicDashboardView = () => {
                 {/* ========================================== */}
                 {/* 3. GRÁFICOS Y DETALLES DE SECCIÓN */}
                 {/* ========================================== */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    {/* Insights & Bulletins */}
-                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 text-left flex flex-col justify-between h-fit lg:min-h-[350px]">
-                        <div>
-                            <h4 className="text-xs font-black text-[#F28C28] uppercase tracking-wider mb-4">Detalle de Sección</h4>
-                            
-                            {activeSection === 'general' && (
-                                <div className="space-y-4">
-                                    <h5 className="font-bold text-base text-white">Análisis Agregado</h5>
-                                    <p className="text-xs text-gray-400 leading-relaxed">
-                                        El mes en curso presenta una alta actividad de focos de incendio en malezas debido a la baja humedad estacional. Los siniestros viales se mantienen en la media provincial.
-                                    </p>
-                                    <div className="p-4 bg-[#0B1528] rounded-xl border border-white/5 text-xs text-gray-300">
-                                        ⚡ <b>Dato Clave</b>: Dpto. Sarmiento concentra el mayor volumen de incidentes reportados en este período.
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeSection === 'traffic' && (
-                                <div className="space-y-4">
-                                    <h5 className="font-bold text-base text-[#2563EB]">Siniestralidad Vial</h5>
-                                    <ul className="space-y-3 text-xs text-gray-300">
-                                        <li className="flex gap-2">
-                                            <span className="text-[#2563EB] font-bold">🏍️</span>
-                                            Gran índice de colisiones menores involucran a motos en esquinas urbanas.
-                                        </li>
-                                        <li className="flex gap-2">
-                                            <span className="text-[#2563EB] font-bold">🛣️</span>
-                                            Los accidentes en rutas se deben principalmente a la falta de banquinas asfaltadas y sobrepasos peligrosos.
-                                        </li>
-                                        <li className="flex gap-2">
-                                            <span className="text-[#2563EB] font-bold">⚠️</span>
-                                            Los choques provocados por animales sueltos siguen siendo un problema recurrente en zonas rurales.
-                                        </li>
-                                    </ul>
-                                </div>
-                            )}
-
-                            {activeSection === 'fire' && (
-                                <div className="space-y-4">
-                                    <h5 className="font-bold text-base text-[#DC2626]">Focos de Fuego</h5>
-                                    <ul className="space-y-3 text-xs text-gray-300">
-                                        <li className="flex gap-2">
-                                            <span className="text-[#DC2626] font-bold">🌾</span>
-                                            La quema de pastizales y lotes baldíos es el disparador del 75% de las alarmas.
-                                        </li>
-                                        <li className="flex gap-2">
-                                            <span className="text-[#DC2626] font-bold">🚒</span>
-                                            Intervenciones rápidas de bomberos evitaron propagación en 92% de los focos.
-                                        </li>
-                                        <li className="flex gap-2">
-                                            <span className="text-[#DC2626] font-bold">🔥</span>
-                                            Los incendios vehiculares corresponden en su totalidad a fallas mecánicas previas.
-                                        </li>
-                                    </ul>
-                                </div>
-                            )}
-
-                            {activeSection === 'wind' && (
-                                <div className="space-y-4">
-                                    <h5 className="font-bold text-base text-[#F28C28]">Fenómenos Climáticos</h5>
-                                    <ul className="space-y-3 text-xs text-gray-300">
-                                        <li className="flex gap-2">
-                                            <span className="text-[#F28C28] font-bold">🌳</span>
-                                            Se reportó la caída de 18 árboles/ramas de gran porte en áreas peatonales del microcentro.
-                                        </li>
-                                        <li className="flex gap-2">
-                                            <span className="text-[#F28C28] font-bold">⚡</span>
-                                            Transformadores dañados dejaron sin energía eléctrica a 2.300 usuarios en Rivadavia.
-                                        </li>
-                                        <li className="flex gap-2">
-                                            <span className="text-[#F28C28] font-bold">⚠️</span>
-                                            Ráfagas del Zonda superaron los 90 km/h en zonas del piedemonte sanjuanino.
-                                        </li>
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Botón de conversión */}
-                        <button 
-                            onClick={() => window.location.href = '/dashboard_premium'}
-                            className="w-full mt-6 bg-[#F28C28] text-white text-xs font-black uppercase tracking-wider py-3 rounded-xl shadow-lg shadow-[#F28C28]/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
-                        >
-                            Desbloquear Histórico Completo ➜
-                        </button>
-                    </div>
-
+                <div className="mb-8">
                     {/* Gráfico Analítico Real de Incidentes por Departamento */}
-                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 text-left lg:col-span-2 flex flex-col justify-between">
+                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 text-left flex flex-col justify-between">
                         <div>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                                 <h4 className="text-sm font-black uppercase tracking-wider">
@@ -649,7 +562,7 @@ const PublicDashboardView = () => {
                                                 className={`w-full ${color} rounded-t-lg transition-all group-hover:brightness-110`} 
                                                 style={{ height: d.pct }}
                                             ></div>
-                                            <span className="text-xs text-gray-400 font-bold truncate max-w-full">{d.label}</span>
+                                            <span className="text-xs text-gray-400 font-bold truncate max-w-full text-center">{d.label}</span>
                                         </div>
                                     );
                                 })}
