@@ -1,58 +1,138 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
-
 <p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+  <img src="public/images/logo.jpeg" width="300" alt="ZonData Logo" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
 </p>
 
-## About Laravel
+# 📍 ZonData - Plataforma de Monitoreo de Incidentes en Tiempo Real
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+ZonData es una aplicación web interactiva diseñada para el monitoreo automatizado de incidentes críticos (meteorológicos, siniestros viales e incendios) en la Provincia de San Juan, Argentina. 
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+El sistema extrae noticias automáticamente mediante scrapers inteligentes en Python, geolocaliza los eventos en base a un análisis jerárquico de localidades y departamentos de la base de datos, y los visualiza en tiempo real en un mapa dinámico e interactivo.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 🛠️ Stack Tecnológico
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+El proyecto está diseñado bajo una arquitectura desacoplada pero altamente sincronizada:
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+*   **Backend (API Rest):** Laravel 11 (PHP)
+*   **Base de Datos:** SQLite (ligera, veloz y autocontenida)
+*   **Frontend (Panel & Mapa):** React 19 + Leaflet Map + Tailwind CSS (Vite)
+*   **Data Ingestion (Scrapers):** Python 3 + Geolocalización inteligente (`geopy` & `Nominatim` de OpenStreetMap)
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+---
 
-## Agentic Development
+## 📦 Requisitos Previos
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+Antes de comenzar la instalación en una nueva máquina, asegúrate de contar con los siguientes componentes en tu sistema:
 
+1.  **PHP** >= 8.2 (junto con [Composer](https://getcomposer.org/))
+2.  **Node.js** >= 18 (junto con `npm`)
+3.  **Python** >= 3.10 (junto con `pip`)
+4.  **Laravel Herd** o **Laragon** (Altamente recomendado para manejar dominios locales `.test` y PHP automáticamente)
+
+---
+
+## 🚀 Guía de Instalación y Puesta en Marcha
+
+Sigue estos sencillos pasos para clonar y levantar el proyecto de forma local en pocos minutos:
+
+### 1. Clonar el repositorio
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone https://github.com/Noodle1981/zondata.git
+cd zondata
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### 2. Configurar las Variables de Entorno (`.env`)
+Crea una copia del archivo de ejemplo para configurar tus credenciales locales:
+```bash
+cp .env.example .env
+```
+Abre el archivo `.env` recién creado y define la URL asignada por tu servidor de desarrollo. 
+*   **Si usas Laravel Herd o Laragon (Recomendado):**
+    ```env
+    APP_URL=http://zondata.test
+    DB_CONNECTION=sqlite
+    ```
+*   **Si utilizas el servidor local integrado de PHP (`artisan serve`):**
+    ```env
+    APP_URL=http://127.0.0.1:8000
+    DB_CONNECTION=sqlite
+    ```
 
-## Contributing
+### 3. Instalar Dependencias del Servidor e Iniciar Base de Datos
+Instala las librerías necesarias de PHP:
+```bash
+composer install
+```
+Genera la clave de seguridad única de la aplicación:
+```bash
+php artisan key:generate
+```
+Crea y siembra la base de datos local SQLite (**este paso es fundamental** para inicializar las tablas de departamentos y localidades de San Juan que utiliza el geolocalizador):
+```bash
+php artisan migrate:fresh --seed
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 4. Instalar Dependencias del Frontend y de Python
+Instala los paquetes de React y herramientas de compilación de assets:
+```bash
+npm install
+```
+Instala los módulos de Python necesarios para correr los scrapers:
+```bash
+pip install -r requirements.txt
+```
 
-## Code of Conduct
+---
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## 💻 Ejecución del Proyecto
 
-## Security Vulnerabilities
+### Modo Integrado Completo (Recomendado)
+El proyecto cuenta con un comando único que compila el frontend en tiempo real y ejecuta el scraper de noticias en segundo plano simultáneamente:
+```bash
+npm run start
+```
+*(Este comando levanta `Vite` y el daemon del scraper de Python en paralelo en la misma consola).*
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### Servir el Backend Laravel (Opcional)
+Si no utilizas Herd o Laragon, recuerda levantar tu servidor local de PHP en otra ventana de tu terminal para poder responder a las solicitudes de la API:
+```bash
+php artisan serve
+```
 
-## License
+### Ejecutar o Probar los Scrapers manualmente
+*   **Ejecutar el Scraper en bucle constante (Modo Daemon):**
+    ```bash
+    npm run scraper
+    ```
+    *(Busca incidentes en los feeds locales de noticias cada 30 minutos de forma indefinida).*
+*   **Ejecutar un escaneo único e inmediato:**
+    ```bash
+    python scrapers/rss_scraper.py
+    ```
+*   **Probar la ingesta manual de datos ficticios:**
+    ```bash
+    npm run test:sources
+    ```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+---
+
+## 🤖 Automatización en Windows en Segundo Plano
+
+Si estás en tu entorno de producción o desarrollo diario en Windows, puedes programar tareas del sistema para que el scraper de incidentes y el programador de tareas de Laravel se ejecuten automáticamente al iniciar sesión en el equipo de forma oculta:
+
+1. Abre la terminal de **PowerShell como Administrador**.
+2. Ejecuta el script automatizado de configuración:
+   ```powershell
+   ./setup_windows.ps1
+   ```
+3. El script registrará las tareas programadas correspondientes en tu sistema de manera permanente.
+
+---
+
+## 📁 Estructura Clave del Proyecto
+
+*   `app/Http/Controllers/Api/IncidentController.php` — Controlador del backend que filtra, procesa y expone los incidentes publicados.
+*   `database/seeders/LocationSeeder.php` — Semillas geográficas oficiales (Departamentos y Localidades de San Juan).
+*   `scrapers/rss_scraper.py` — Algoritmo inteligente de ingesta, filtrado categórico por palabras clave y geolocalización jerárquica.
+*   `resources/js/components/MapComponent.jsx` — Componente interactivo del mapa (Leaflet), filtros de incidentes y conteos premium.
