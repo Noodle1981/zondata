@@ -572,27 +572,33 @@ const PublicDashboardView = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                         {activeSection === 'general' && (
                             <>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-white/5 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Total Incidentes</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-[#F28C28]">{incidents.length}</h4>
+                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-white/10 text-left">
+                                    <span className="text-xs text-gray-400 uppercase font-bold">Total Reportes</span>
+                                    <h4 className="text-3xl font-black mt-1.5 text-white">{incidents.length}</h4>
                                     <span className="text-[10px] text-emerald-500 flex items-center gap-1 mt-1.5 font-bold">
-                                        <TrendingUp size={12} /> +12% este mes
+                                        <TrendingUp size={12} /> Total Scrapeado
                                     </span>
                                 </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-white/5 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Mayor Incidencia</span>
-                                    <h4 className="text-xl font-black mt-3 text-white truncate">Incendios</h4>
-                                    <span className="text-[10px] text-red-400 font-bold block mt-1.5">58% de eventos totales</span>
+                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#2563EB]/20 text-left">
+                                    <span className="text-xs text-gray-400 uppercase font-bold">Tránsito y Choques</span>
+                                    <h4 className="text-3xl font-black mt-1.5 text-[#2563EB]">{trafficIncidents.length}</h4>
+                                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1.5">
+                                        <Car size={12} className="text-[#2563EB]" /> Reportes Detectados
+                                    </span>
                                 </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-white/5 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Zona Crítica</span>
-                                    <h4 className="text-xl font-black mt-3 text-white truncate">Sarmiento</h4>
-                                    <span className="text-[10px] text-gray-400 block mt-1.5">Dpto. Sarmiento</span>
+                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#DC2626]/20 text-left">
+                                    <span className="text-xs text-gray-400 uppercase font-bold">Incendios</span>
+                                    <h4 className="text-3xl font-black mt-1.5 text-[#DC2626]">{getFilteredIncidents('fire').length}</h4>
+                                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1.5">
+                                        <Flame size={12} className="text-[#DC2626]" /> Reportes Detectados
+                                    </span>
                                 </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-white/5 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Prom. Respuesta</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-white">14 min</h4>
-                                    <span className="text-[10px] text-emerald-500 font-bold block mt-1.5">Óptimo provincial</span>
+                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#F28C28]/20 text-left">
+                                    <span className="text-xs text-gray-400 uppercase font-bold">Viento y Clima</span>
+                                    <h4 className="text-3xl font-black mt-1.5 text-[#F28C28]">{getFilteredIncidents('wind').length}</h4>
+                                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1.5">
+                                        <Wind size={12} className="text-[#F28C28]" /> Reportes Detectados
+                                    </span>
                                 </div>
                             </>
                         )}
