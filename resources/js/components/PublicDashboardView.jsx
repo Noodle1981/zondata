@@ -30,7 +30,11 @@ import {
     Home,
     Wheat,
     Store,
-    Factory
+    Factory,
+    Leaf,
+    Zap,
+    ZapOff,
+    Flag
 } from 'lucide-react';
 
 const PublicDashboardView = () => {
@@ -170,6 +174,22 @@ const PublicDashboardView = () => {
     };
     // Others is the remainder
     fireCounts.otros = Math.max(0, fireIncidents.length - Object.values(fireCounts).reduce((a, b) => a + b, 0) + fireCounts.otros);
+
+    // ==========================================
+    // METRICS CALCULATORS FOR WIND (Scraping)
+    // ==========================================
+    const windIncidents = getFilteredIncidents('wind');
+    const windCounts = {
+        arboles: windIncidents.filter(i => matchesKeywords(i, ['árbol', 'arbol', 'forestal', 'árboles', 'arboles']) && matchesKeywords(i, ['caída', 'caida', 'cayó', 'cayo', 'derribado', 'tumbado', 'calzada'])).length,
+        ramas: windIncidents.filter(i => matchesKeywords(i, ['rama', 'ramas', 'gajo', 'gajos', 'copa']) && !matchesKeywords(i, ['árbol caído', 'arbol caido', 'árboles caídos', 'arboles caidos'])).length,
+        techos: windIncidents.filter(i => matchesKeywords(i, ['techo', 'techos', 'chapa', 'chapas', 'voladura', 'volaron', 'voló', 'volo'])).length,
+        cableados: windIncidents.filter(i => matchesKeywords(i, ['cable', 'cables', 'tendido', 'cableado', 'poste', 'postes', 'columnas', 'columna'])).length,
+        cortes: windIncidents.filter(i => matchesKeywords(i, ['corte', 'cortes', 'luz', 'energía', 'energia', 'apagón', 'apagon', 'sin servicio', 'electricidad', 'sin luz'])).length,
+        carteleria: windIncidents.filter(i => matchesKeywords(i, ['cartel', 'carteles', 'semáforo', 'semaforo', 'letrero', 'publicidad', 'semáforos', 'semaforos'])).length,
+        otros: 0
+    };
+    // Others is the remainder
+    windCounts.otros = Math.max(0, windIncidents.length - Object.values(windCounts).reduce((a, b) => a + b, 0) + windCounts.otros);
 
     // ==========================================
     // DYNAMIC DEPARTMENT INCIDENT COUNTS (Chart)
@@ -645,6 +665,83 @@ const PublicDashboardView = () => {
                                 <div className="text-left">
                                     <h5 className="text-xs text-gray-400 font-bold">Otros Focos</h5>
                                     <p className="text-2xl font-black text-white mt-0.5">{fireCounts.otros}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ========================================== */}
+                {/* 2.3 SECCIÓN: TARJETAS DE CONTEO POR TIPO DE DAÑO POR VIENTO */}
+                {/* ========================================== */}
+                {activeSection === 'wind' && (
+                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 mb-8">
+                        <div className="mb-4 text-left">
+                            <h3 className="text-lg font-black text-[#F28C28]">Daños por Fenómenos Climáticos</h3>
+                            <p className="text-xs text-gray-400 mt-0.5">Clasificación dinámica de daños provocados por viento Zonda / temporal en San Juan.</p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
+                                    <Trees size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Árboles Caídos</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.arboles}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
+                                    <Leaf size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Ramas Desprendidas</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.ramas}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
+                                    <Home size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Techos Afectados</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.techos}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
+                                    <Zap size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Postes / Cableados</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.cableados}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
+                                    <ZapOff size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Cortes de Luz</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.cortes}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
+                                    <Flag size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Cartelería / Semáforos</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.carteleria}</p>
+                                </div>
+                            </div>
+                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
+                                    <Layers size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <h5 className="text-xs text-gray-400 font-bold">Otros Daños</h5>
+                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.otros}</p>
                                 </div>
                             </div>
                         </div>
