@@ -19,27 +19,61 @@ const PublicDashboardView = () => {
     const [incidents, setIncidents] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // Relative time helper — e.g. "hace X minutos/horas/días"
+    const relativeTime = (dateStr) => {
+        if (!dateStr) return 'Reciente';
+        try {
+            const date = new Date(dateStr);
+            const diffMs = Date.now() - date.getTime();
+            const diffMin = Math.floor(diffMs / 60000);
+            if (diffMin < 1) return 'hace unos segundos';
+            if (diffMin === 1) return 'hace 1 minuto';
+            if (diffMin < 60) return `hace ${diffMin} minutos`;
+            const diffHours = Math.floor(diffMin / 60);
+            if (diffHours === 1) return 'hace 1 hora';
+            if (diffHours < 24) return `hace ${diffHours} horas`;
+            const diffDays = Math.floor(diffHours / 24);
+            if (diffDays === 1) return 'hace 1 día';
+            return `hace ${diffDays} días`;
+        } catch (e) {
+            return 'Reciente';
+        }
+    };
+
     useEffect(() => {
-        // Fetch real incidents from backend API
-        fetch('/api/incidents')
+        // Fetch real incidents of the last 30 days from backend API
+        fetch('/api/incidents?range=month')
             .then(res => res.json())
             .then(data => {
-                setIncidents(data || []);
+                const items = data?.data ?? data;
+                setIncidents(Array.isArray(items) ? items : []);
                 setLoading(false);
             })
             .catch(err => {
                 console.error("Error fetching dashboard incidents:", err);
+                setIncidents([]);
                 setLoading(false);
             });
     }, []);
 
-    // Filter incidents of the last 30 days based on their type
+    // Filter incidents of the last 30 days based on their type using robust slug matching
     const getFilteredIncidents = (type) => {
         if (type === 'general') return incidents;
-        if (type === 'traffic') return incidents.filter(i => i.category === 'transito');
-        if (type === 'fire') return incidents.filter(i => i.category === 'incendio');
-        if (type === 'wind') return incidents.filter(i => i.category === 'viento');
-        return incidents;
+        
+        return incidents.filter(i => {
+            const slug = i.category?.slug || '';
+            
+            if (type === 'traffic') {
+                return ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k));
+            }
+            if (type === 'fire') {
+                return slug.includes('incendio') || slug.includes('siniestro');
+            }
+            if (type === 'wind') {
+                return ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug.includes(k));
+            }
+            return true;
+        });
     };
 
     const displayIncidents = getFilteredIncidents(activeSection);
@@ -409,15 +443,20 @@ const PublicDashboardView = () => {
                                 let catLabel = 'Otro';
                                 let badgeColor = 'bg-gray-500/20 text-gray-400';
 
-                                if (inc.category === 'viento') {
+                                const slug = inc.category?.slug || '';
+                                const isWind = ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug.includes(k));
+                                const isAccident = ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k));
+                                const isFire = slug.includes('incendio') || slug.includes('siniestro');
+
+                                if (isWind) {
                                     borderColor = 'border-l-[#F28C28]';
                                     catLabel = 'Clima';
                                     badgeColor = 'bg-[#F28C28]/20 text-[#F28C28]';
-                                } else if (inc.category === 'transito') {
+                                } else if (isAccident) {
                                     borderColor = 'border-l-[#2563EB]';
                                     catLabel = 'Tránsito';
                                     badgeColor = 'bg-[#2563EB]/20 text-[#2563EB]';
-                                } else if (inc.category === 'incendio') {
+                                } else if (isFire) {
                                     borderColor = 'border-l-[#DC2626]';
                                     catLabel = 'Incendio';
                                     badgeColor = 'bg-[#DC2626]/20 text-red-500';
@@ -435,7 +474,7 @@ const PublicDashboardView = () => {
                                                 </span>
                                                 <span className="text-[10px] text-gray-400 flex items-center gap-1">
                                                     <Clock size={10} />
-                                                    {inc.relative_time || 'Hace poco'}
+                                                    {relativeTime(inc.event_date)}
                                                 </span>
                                             </div>
                                             <h4 className="font-bold text-sm text-white line-clamp-2 leading-snug">{inc.title}</h4>
@@ -448,7 +487,7 @@ const PublicDashboardView = () => {
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <Calendar size={10} />
-                                                {inc.date ? new Date(inc.date).toLocaleDateString() : 'Reciente'}
+                                                {inc.event_date ? new Date(inc.event_date).toLocaleDateString() : 'Reciente'}
                                             </span>
                                         </div>
                                     </div>
