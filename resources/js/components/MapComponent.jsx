@@ -430,9 +430,10 @@ const MapComponent = () => {
                     </div>
 
                     {/* CTA Dataset Completo */}
-                    <div className="mt-2">
+                    <div className="mt-2.5 flex flex-col gap-2">
+                        {/* Botón Principal: Acceso Premium */}
                         <button 
-                            className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-3 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-3 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                             onClick={() => {
                                 setModalView('pricing');
                                 setPremiumModalOpen(true);
@@ -450,6 +451,18 @@ const MapComponent = () => {
                                     Suscribirse ahora
                                 </div>
                             </div>
+                        </button>
+
+                        {/* Botón Secundario: Acceso Público / Estadísticas Gratuitas */}
+                        <button
+                            onClick={() => {
+                                setModalView('dashboard');
+                                setPremiumModalOpen(true);
+                            }}
+                            className="w-full bg-slate-100 hover:bg-slate-200 text-[#002D62] font-black py-2 rounded-xl text-[10px] uppercase tracking-wider border border-slate-200 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                            <BarChart2 size={12} className="text-[#F28C28]" />
+                            Ver Estadísticas Públicas (Gratuito)
                         </button>
                     </div>
                 </div>
