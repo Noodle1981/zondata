@@ -1,8 +1,33 @@
+import os
 import requests
 import json
 import time
 
-API_URL = "http://zondata.test/api/incidents"
+# Helper para leer variables de entorno desde el archivo .env del proyecto
+def get_env_variable(key, default=None):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    paths = [
+        os.path.join(base_dir, ".env"),
+        ".env"
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith(key + "="):
+                            val = line.split("=", 1)[1].strip()
+                            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                                val = val[1:-1]
+                            return val
+            except Exception:
+                pass
+    return default
+
+# URL dinámica desde el .env
+APP_URL = get_env_variable("APP_URL", "http://zondata.test")
+API_URL = f"{APP_URL.rstrip('/')}/api/incidents"
 
 def send_incident(incident_data):
     try:

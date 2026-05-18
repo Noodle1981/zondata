@@ -1,3 +1,4 @@
+import os
 import requests
 import xml.etree.ElementTree as ET
 import time
@@ -11,6 +12,28 @@ from geopy.exc import GeocoderTimedOut
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Helper para leer variables de entorno desde el archivo .env del proyecto
+def get_env_variable(key, default=None):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    paths = [
+        os.path.join(base_dir, ".env"),
+        ".env"
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith(key + "="):
+                            val = line.split("=", 1)[1].strip()
+                            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                                val = val[1:-1]
+                            return val
+            except Exception:
+                pass
+    return default
+
 # Configuración Global - Usamos Googlebot para maximizar compatibilidad y evitar bloqueos 403
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
@@ -19,7 +42,9 @@ HEADERS = {
     'Connection': 'keep-alive'
 }
 
-API_URL = "http://zondata.test/api/incidents"
+# URL dinámica desde el .env (por ejemplo http://zondata.test o http://127.0.0.1:8000)
+APP_URL = get_env_variable("APP_URL", "http://zondata.test")
+API_URL = f"{APP_URL.rstrip('/')}/api/incidents"
 
 RSS_FEEDS = [
     "https://diariodecuyo.com.ar/rss/pages/policiales.xml",
@@ -99,8 +124,9 @@ DEPARTAMENTOS = [
     "Valle Fértil", "Iglesia", "Calingasta", "Ullum", "Zonda"
 ]
 
-# Configuración de Base de Datos
-DB_PATH = "database/database.sqlite"
+# Configuración de Base de Datos (Ruta absoluta relativa al script para evitar fallos de ejecución)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "database", "database.sqlite")
 
 def load_locations():
     """Carga departamentos y localidades (con su departamento) desde la DB"""
