@@ -32,4 +32,14 @@ class Incident extends Model
     {
         return $this->belongsTo(Category::class);
     }
+
+    public function department()
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    public function locality()
+    {
+        return $this->belongsTo(Locality::class);
+    }
 }

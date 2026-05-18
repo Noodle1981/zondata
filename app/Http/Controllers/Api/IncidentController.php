@@ -10,7 +10,7 @@ class IncidentController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Incident::with('category')
+        $query = Incident::with(['category', 'department', 'locality'])
             ->where('status', 'Published');
 
         $range = $request->query('range', 'today');
