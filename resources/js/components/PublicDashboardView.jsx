@@ -245,6 +245,16 @@ const PublicDashboardView = () => {
     };
     const dailyChartData = getDailyStatistics();
 
+    const getMonthYearTitle = () => {
+        const monthNames = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ];
+        const today = new Date();
+        return `${monthNames[today.getMonth()]} ${today.getFullYear()}`;
+    };
+    const currentMonthYear = getMonthYearTitle();
+
     // ==========================================
     // DYNAMIC DEPARTMENT INCIDENT COUNTS (Chart)
     // ==========================================
@@ -859,17 +869,17 @@ const PublicDashboardView = () => {
 
                 <div className="mb-8">
                     {/* Gráfico Analítico Real de Incidentes por Día */}
-                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 text-left flex flex-col justify-between">
+                    <div className="bg-[#111A2E] p-4 sm:p-6 rounded-2xl border border-white/5 text-left flex flex-col justify-between">
                         <div>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                                 <h4 className="text-sm font-black uppercase tracking-wider">
-                                    Incidentes por Día (Mes en Curso)
+                                    Incidentes por Día ({currentMonthYear})
                                 </h4>
                                 <span className="text-[10px] text-gray-400 bg-white/5 py-1 px-2.5 rounded-md">
                                     Tendencia de Siniestralidad
                                 </span>
                             </div>
-                            <div className="h-72 flex items-end gap-1.5 sm:gap-2.5 pt-6 pb-14 border-b border-gray-700/50 overflow-x-auto scrollbar-thin">
+                            <div className="h-72 flex items-end gap-[3px] sm:gap-[6px] pt-6 pb-10 border-b border-gray-700/50 overflow-x-auto scrollbar-thin">
                                 {dailyChartData.map((d, i) => {
                                     let color = "bg-[#002D62]";
                                     if (activeSection === 'traffic') color = "bg-[#2563EB]";
@@ -877,16 +887,16 @@ const PublicDashboardView = () => {
                                     if (activeSection === 'wind') color = "bg-[#F28C28]";
 
                                     return (
-                                        <div key={i} className="flex-1 min-w-[20px] sm:min-w-[32px] flex flex-col items-center gap-2 group h-full justify-end relative">
-                                            <div className="text-[10px] font-bold text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5">
+                                        <div key={i} className="flex-1 min-w-[7px] sm:min-w-[14px] flex flex-col items-center gap-2 h-full justify-end relative group">
+                                            <div className="text-[10px] font-bold text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5 z-10 bg-[#0B1528] px-1 rounded border border-white/10">
                                                 {d.count}
                                             </div>
                                             <div 
                                                 className={`w-full ${color} rounded-t-sm transition-all group-hover:brightness-110`} 
                                                 style={{ height: d.pct }}
                                             ></div>
-                                            <span className="text-[9px] md:text-xs text-gray-400 font-bold whitespace-nowrap rotate-[-35deg] origin-top-left translate-y-1 block mt-1">
-                                                Día {d.label}
+                                            <span className="text-[7px] sm:text-[9px] md:text-xs text-gray-400 font-bold block mt-1">
+                                                {d.label}
                                             </span>
                                         </div>
                                     );
