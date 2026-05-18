@@ -435,8 +435,7 @@ const MapComponent = () => {
                         <button 
                             className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-3 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                             onClick={() => {
-                                setModalView('pricing');
-                                setPremiumModalOpen(true);
+                                window.location.href = '/dashboard_premium';
                             }}
                         >
                             <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -456,8 +455,7 @@ const MapComponent = () => {
                         {/* Botón Secundario: Acceso Público / Estadísticas Gratuitas */}
                         <button
                             onClick={() => {
-                                setModalView('dashboard');
-                                setPremiumModalOpen(true);
+                                window.location.href = '/dashboard_public';
                             }}
                             className="w-full bg-slate-100 hover:bg-slate-200 text-[#002D62] font-black py-2 rounded-xl text-[10px] uppercase tracking-wider border border-slate-200 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                         >
