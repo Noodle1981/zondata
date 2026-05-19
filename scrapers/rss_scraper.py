@@ -281,6 +281,8 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
     title = clean_html(title)
     description = clean_html(description)
     text_to_search = (title + " " + description).lower()
+    # Evitar falsos positivos de "fuego" en palabras que no refieren a un incendio (ej. matafuegos)
+    text_to_search = text_to_search.replace("matafuegos", "").replace("matafuego", "")
     if any(black_word in text_to_search for black_word in BLACKLIST_KEYWORDS):
         return None
     detected_category = None
@@ -303,6 +305,38 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
     if not detected_category and any(word in text_to_search for word in CONTEXT_ACCIDENT):
         for slug, keywords in ACCIDENT_MAPPING.items():
             if any(kw in text_to_search for kw in keywords):
+                if slug == "vuelco":
+                    # Palabras de contexto de vehículos o vías para validar que sea un vuelco real
+                    vuelco_context = [
+                        "auto", "automóvil", "automovil", "vehículo", "vehiculo", "coche",
+                        "camión", "camion", "camioneta", "colectivo", "micro", "ómnibus", "omnibus", "bus",
+                        "moto", "motocicleta", "motociclista", "ciclomotor", "rodado",
+                        "ciclista", "bicicleta", "bici", "peatón", "peatona", "transeúnte", "transeunte",
+                        "utilitario", "furgón", "furgon", "trafic", "ambulancia", "patrullero",
+                        "ruta", "calle", "avenida", "av.", "autopista", "carretera", "asfalto", "calzada",
+                        "banquina", "zanja", "cuneta", "bache", "semáforo", "semaforo", "esquina",
+                        "conductor", "conductores", "pasajero", "pasajeros", "volcadura", "tránsito", "transito", "vial"
+                    ]
+                    
+                    # Descartar frases metafóricas, de detenciones/robos o climáticas comunes
+                    false_positives = [
+                        "vuelco inesperado", "vuelco en la causa", "vuelco en la investigacion", 
+                        "vuelco en la investigación", "vuelco en el caso", "giro inesperado", 
+                        "cayó detenido", "cayo detenido", "cayó preso", "cayo preso", 
+                        "cayó la banda", "cayo la banda", "cayó una banda", "cayo una banda", 
+                        "cayó por el robo", "cayo por el robo", "cayó por robo", "cayo por robo", 
+                        "cayó por robar", "cayo por robar", "cayó in fraganti", "cayo in fraganti", 
+                        "cayó con las manos", "cayo con las manos", "cayó tras", "cayo tras", 
+                        "cayó acusado", "cayo acusado", "caída de granizo", "caida de granizo", 
+                        "caída del cabello", "caida del cabello", "caída de las ventas", "caida de las ventas",
+                        "caída del consumo", "caida del consumo"
+                    ]
+                    
+                    if any(fp in text_to_search for fp in false_positives):
+                        continue
+                        
+                    if not any(ctx in text_to_search for ctx in vuelco_context):
+                        continue
                 detected_category = slug
                 break
     mentions_other_province = any(prov in text_to_search for prov in BLACKLIST_PROVINCIAS)

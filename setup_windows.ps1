@@ -8,18 +8,25 @@ Write-Host "  ZonData - Configuracion de Automatizacion" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
+# Obtener el directorio actual del script de forma dinámica
+$projectDir = $PSScriptRoot
+if (-not $projectDir) {
+    $projectDir = (Get-Item -Path ".\").FullName
+}
+$projectDir = $projectDir.TrimEnd('\')
+
 # 1. Tarea: Laravel Scheduler (cada 1 minuto, para que el schedule:everyThirtyMinutes funcione)
 Write-Host "[1/2] Registrando Laravel Scheduler en Windows Task Scheduler..." -ForegroundColor Yellow
 schtasks /create `
     /tn "ZonData - Laravel Scheduler" `
-    /tr "php D:\Zondata\artisan schedule:run" `
+    /tr "php `"$projectDir\artisan`" schedule:run" `
     /sc MINUTE `
     /mo 1 `
     /ru SYSTEM `
     /f | Out-Null
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "  OK - Laravel Scheduler registrado (cada 1 minuto)" -ForegroundColor Green
+    Write-Host "  OK - Laravel Scheduler registrado (cada 1 minuto) en $projectDir" -ForegroundColor Green
 } else {
     Write-Host "  ERROR - No se pudo registrar. Intenta ejecutar como Administrador." -ForegroundColor Red
 }
@@ -28,12 +35,12 @@ if ($LASTEXITCODE -eq 0) {
 Write-Host "[2/2] Registrando Python Scraper Daemon (al iniciar sesion)..." -ForegroundColor Yellow
 schtasks /create `
     /tn "ZonData - Python Scraper Daemon" `
-    /tr "python D:\Zondata\scrapers\rss_scraper.py --daemon" `
+    /tr "python `"$projectDir\scrapers\rss_scraper.py`" --daemon" `
     /sc ONLOGON `
     /f | Out-Null
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "  OK - Scraper Python registrado (inicia con Windows)" -ForegroundColor Green
+    Write-Host "  OK - Scraper Python registrado (inicia con Windows) en $projectDir" -ForegroundColor Green
 } else {
     Write-Host "  ERROR - No se pudo registrar. Intenta ejecutar como Administrador." -ForegroundColor Red
 }
