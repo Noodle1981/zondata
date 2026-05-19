@@ -404,14 +404,14 @@ def scrape_rss():
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--daemon', action='store_true', help='Ejecutar en modo bucle infinito cada 30 minutos')
+    parser.add_argument('--daemon', action='store_true', help='Ejecutar en modo bucle infinito cada 1 hora')
     args = parser.parse_args()
     if args.daemon:
         while True:
             scrape_rss()
             scrape_html()
-            print(f"[{datetime.now()}] Esperando 30 minutos para el próximo barrido...")
-            time.sleep(1800)
+            print(f"[{datetime.now()}] Esperando 1 hora para el próximo barrido...")
+            time.sleep(3600)
     else:
         scrape_rss()
         scrape_html()

@@ -35,7 +35,8 @@ import {
     Zap,
     ZapOff,
     Flag,
-    Skull
+    Skull,
+    Briefcase
 } from 'lucide-react';
 
 const PublicDashboardView = () => {
@@ -139,27 +140,22 @@ const PublicDashboardView = () => {
     };
 
     // 3. Roads & Types of Crash Counts
-    const routeAccidents = trafficIncidents.filter(i => matchesKeywords(i, ['ruta', 'r.n', 'rn ', 'ruta nacional', 'ruta provincial', 'km '])).length;
-    const circunvalacionAccidents = trafficIncidents.filter(i => matchesKeywords(i, ['circunvalacion', 'circunvalación', 'av. circunvalación', 'avenida de circunvalación'])).length;
-    const urbanAccidents = trafficIncidents.filter(i => 
-        !matchesKeywords(i, ['ruta', 'r.n', 'rn ', 'ruta nacional', 'ruta provincial', 'km ', 'circunvalacion', 'circunvalación']) && 
-        matchesKeywords(i, ['calle', 'esquina', 'interseccion', 'intersección', 'avenida', 'barrio', 'plaza', 'semáforo'])
-    ).length;
-    const ruralAccidents = Math.max(0, trafficIncidents.length - (routeAccidents + circunvalacionAccidents + urbanAccidents));
+    const routeAccidents = trafficIncidents.filter(i => i.road_type === 'Ruta').length;
+    const circunvalacionAccidents = trafficIncidents.filter(i => i.road_type === 'Circunvalación').length;
+    const urbanAccidents = trafficIncidents.filter(i => i.road_type === 'Urbana').length;
+    const ruralAccidents = trafficIncidents.filter(i => i.road_type === 'Alejada').length;
 
     // 4. Vehicle Type Counters
     const vehicleCounts = {
-        autos: trafficIncidents.filter(i => matchesKeywords(i, ['auto', 'automóvil', 'automovil', 'vehículo', 'vehiculo', 'remís', 'taxi'])).length,
-        camionetas: trafficIncidents.filter(i => matchesKeywords(i, ['camioneta', 'pickup', 'pick-up', 'hilux', 'amarok', 'ranger', 'suv', 'trafic', 'furgón'])).length,
-        motos: trafficIncidents.filter(i => matchesKeywords(i, ['moto', 'motocicleta', 'motociclista', 'ciclomotor', 'motomel', 'zanella', 'honda wave'])).length,
-        camiones: trafficIncidents.filter(i => matchesKeywords(i, ['camión', 'camion', 'semirremolque', 'acoplado', 'mosquito', 'chasis'])).length,
-        colectivos: trafficIncidents.filter(i => matchesKeywords(i, ['colectivo', 'micro', 'ómnibus', 'omnibus', 'bus', 'redtulum', 'tulum'])).length,
-        peatones: trafficIncidents.filter(i => matchesKeywords(i, ['peatón', 'peaton', 'peatona', 'transeúnte', 'transeunte'])).length,
-        bicicletas: trafficIncidents.filter(i => matchesKeywords(i, ['bici', 'bicicleta', 'ciclista'])).length,
-        otros: 0
+        autos: trafficIncidents.filter(i => i.has_car).length,
+        camionetas: trafficIncidents.filter(i => i.has_pickup).length,
+        utilitarios: trafficIncidents.filter(i => i.has_utility).length,
+        motos: trafficIncidents.filter(i => i.has_motorcycle).length,
+        camiones: trafficIncidents.filter(i => i.has_truck).length,
+        colectivos: trafficIncidents.filter(i => i.has_bus).length,
+        peatones: trafficIncidents.filter(i => i.has_pedestrian).length,
+        bicicletas: trafficIncidents.filter(i => i.has_bicycle).length
     };
-    // Others is the remainder
-    vehicleCounts.otros = Math.max(0, trafficIncidents.length - Object.values(vehicleCounts).reduce((a, b) => a + b, 0) + vehicleCounts.otros);
 
     // 5. Animal-caused crashes
     const animalCrashes = trafficIncidents.filter(i => matchesKeywords(i, ['caballo', 'vaca', 'perro', 'can ', 'equino', 'animal', 'jauría', 'jauria'])).length;
@@ -455,7 +451,7 @@ const PublicDashboardView = () => {
                                         <Trees size={24} />
                                     </div>
                                     <div className="text-left">
-                                        <h4 className="text-xs font-bold text-gray-400">Zonas Rurales</h4>
+                                        <h4 className="text-xs font-bold text-gray-400">Zonas Alejadas</h4>
                                         <p className="text-2xl font-black text-white mt-0.5">{ruralAccidents}</p>
                                     </div>
                                 </div>
@@ -534,11 +530,11 @@ const PublicDashboardView = () => {
                                 </div>
                                 <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
                                     <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Layers size={24} />
+                                        <Briefcase size={24} />
                                     </div>
                                     <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Otros</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.otros}</p>
+                                        <h5 className="text-xs text-gray-400 font-bold">Utilitarios</h5>
+                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.utilitarios}</p>
                                     </div>
                                 </div>
                             </div>

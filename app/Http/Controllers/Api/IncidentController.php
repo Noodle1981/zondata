@@ -48,9 +48,183 @@ class IncidentController extends Controller
         $text = mb_strtolower($text, 'UTF-8');
         $replacements = [
             'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
-            'ü' => 'u', 'ñ' => 'n', 'í' => 'i', 'ó' => 'o', 'ú' => 'u'
+            'ü' => 'u', 'ñ' => 'n'
         ];
         return strtr($text, $replacements);
+    }
+
+    private function resolveRoadInfo(string $title, ?string $description, float $latitude, float $longitude, ?int $localityId, ?int $departmentId): array
+    {
+        $roadType = 'Otro';
+        $roadName = null;
+
+        $textToSearch = $this->normalizeText($title . ' ' . ($description ?? ''));
+
+        // 1. Detección de Circunvalación
+        if (str_contains($textToSearch, 'circunvalacion')) {
+            return [
+                'road_type' => 'Circunvalación',
+                'road_name' => 'Avenida de Circunvalación'
+            ];
+        }
+
+        // 2. Detección de Ruta (Nacional o Provincial)
+        if (preg_match('/(?:ruta\s+(?:nacional|provincial)?\s*|r\.?n\.?\s*|r\.?p\.?\s*)(\d+)/i', $textToSearch, $matches)) {
+            $num = $matches[1];
+            $isProv = str_contains($textToSearch, 'rp') || str_contains($textToSearch, 'provincial');
+            $prefix = $isProv ? 'Ruta Provincial ' : 'Ruta Nacional ';
+            return [
+                'road_type' => 'Ruta',
+                'road_name' => $prefix . $num
+            ];
+        }
+
+        // 3. Detección de Calle o Avenida
+        $streetPattern = '/(?:calle|avenida|av\.?|pasaje)\s+([a-z0-9áéíóúüñ\s]+?)(?=\s+(?:y|e|al|altura|en|frente|cerca|de)\b|$)/i';
+        if (preg_match($streetPattern, $textToSearch, $matches)) {
+            $nameCandidate = trim($matches[1]);
+            if (strlen($nameCandidate) > 2 && strlen($nameCandidate) < 40) {
+                $isAv = str_contains($textToSearch, 'avenida') || str_contains($textToSearch, 'av.');
+                $prefix = $isAv ? 'Avenida ' : 'Calle ';
+                $roadName = $prefix . ucwords($nameCandidate);
+            }
+        }
+
+        // 4. Clasificación entre Urbana y Alejada
+        $isGranSanJuan = false;
+        if ($departmentId) {
+            $dept = \App\Models\Department::find($departmentId);
+            if ($dept) {
+                $deptName = $this->normalizeText($dept->name);
+                $urbanDepts = ['capital', 'rawson', 'rivadavia', 'chimbas', 'santa lucia'];
+                if (in_array($deptName, $urbanDepts)) {
+                    $isGranSanJuan = true;
+                }
+            }
+        }
+
+        if ($isGranSanJuan) {
+            $roadType = 'Urbana';
+        } else {
+            $mentionsUrbanKeywords = false;
+            foreach (['barrio', 'plaza', 'semaforo', 'esquina', 'microcentro', 'peatonal'] as $word) {
+                if (str_contains($textToSearch, $word)) {
+                    $mentionsUrbanKeywords = true;
+                    break;
+                }
+            }
+
+            $isLocalCenter = false;
+            if ($localityId) {
+                $loc = \App\Models\Locality::find($localityId);
+                if ($loc) {
+                    $locName = $this->normalizeText($loc->name);
+                    if (str_contains($locName, 'caucete') || str_contains($locName, 'jachal') || str_contains($locName, 'villa krause') || str_contains($locName, 'san jose de jachal') || str_contains($locName, 'media agua')) {
+                        $isLocalCenter = true;
+                    }
+                }
+            }
+
+            if ($mentionsUrbanKeywords || $isLocalCenter) {
+                $roadType = 'Urbana';
+            } else {
+                $roadType = 'Alejada';
+            }
+        }
+
+        return [
+            'road_type' => $roadType,
+            'road_name' => $roadName
+        ];
+    }
+
+    private function resolveVehicleParticipation(string $title, ?string $description): array
+    {
+        $textToSearch = $this->normalizeText($title . ' ' . ($description ?? ''));
+
+        $hasCar = false;
+        $hasPickup = false;
+        $hasUtility = false;
+        $hasMotorcycle = false;
+        $hasTruck = false;
+        $hasBus = false;
+        $hasPedestrian = false;
+        $hasBicycle = false;
+
+        // Autos
+        foreach (['auto', 'automovil', 'vehiculo', 'remis', 'taxi'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasCar = true;
+                break;
+            }
+        }
+
+        // Camionetas
+        foreach (['camioneta', 'pickup', 'pick-up', 'hilux', 'amarok', 'ranger', 'suv'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasPickup = true;
+                break;
+            }
+        }
+
+        // Utilitarios
+        foreach (['utilitario', 'utilitarios', 'kangoo', 'berlingo', 'partner', 'fiorino', 'qubo', 'doblo', 'trafic', 'furgon'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasUtility = true;
+                break;
+            }
+        }
+
+        // Motos
+        foreach (['moto', 'motocicleta', 'motociclista', 'ciclomotor', 'motomel', 'zanella', 'honda wave'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasMotorcycle = true;
+                break;
+            }
+        }
+
+        // Camiones
+        foreach (['camion', 'semirremolque', 'acoplado', 'mosquito', 'chasis'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasTruck = true;
+                break;
+            }
+        }
+
+        // Colectivos
+        foreach (['colectivo', 'micro', 'omnibus', 'bus', 'redtulum', 'tulum'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasBus = true;
+                break;
+            }
+        }
+
+        // Peatones
+        foreach (['peaton', 'peatona', 'transeunte'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasPedestrian = true;
+                break;
+            }
+        }
+
+        // Bicicletas
+        foreach (['bici', 'bicicleta', 'ciclista'] as $word) {
+            if (str_contains($textToSearch, $word)) {
+                $hasBicycle = true;
+                break;
+            }
+        }
+
+        return [
+            'has_car' => $hasCar,
+            'has_pickup' => $hasPickup,
+            'has_utility' => $hasUtility,
+            'has_motorcycle' => $hasMotorcycle,
+            'has_truck' => $hasTruck,
+            'has_bus' => $hasBus,
+            'has_pedestrian' => $hasPedestrian,
+            'has_bicycle' => $hasBicycle
+        ];
     }
 
     public function store(Request $request)
@@ -106,10 +280,24 @@ class IncidentController extends Controller
         $localities = \App\Models\Locality::with('department.province')->get();
         $departments = \App\Models\Department::with('province')->get();
 
+        // Mapear cada localidad con su nombre principal "limpio" (coreName) para resolver distritos periféricos
+        $localitiesWithCoreName = $localities->map(function ($locality) {
+            $normalizedName = $this->normalizeText($locality->name);
+            // Extraer parte antes de guión si existe (ej: "Vallecito - Paraje..." -> "Vallecito")
+            $parts = explode('-', $normalizedName);
+            $core = trim($parts[0]);
+            // Quitar prefijos comunes
+            $core = preg_replace('/^(bº|villa|paraje)\s+/', '', $core);
+            $locality->core_name_cleaned = trim($core);
+            return $locality;
+        })->sortByDesc(function ($locality) {
+            return strlen($locality->core_name_cleaned);
+        });
+
         // 1. Buscar localidad en el texto (mayor especificidad)
-        foreach ($localities as $locality) {
-            $normalizedLocName = $this->normalizeText($locality->name);
-            if (strlen($normalizedLocName) > 3 && str_contains($textToSearch, $normalizedLocName)) {
+        foreach ($localitiesWithCoreName as $locality) {
+            $coreName = $locality->core_name_cleaned;
+            if (strlen($coreName) > 3 && str_contains($textToSearch, $coreName)) {
                 $localityId = $locality->id;
                 $departmentId = $locality->department_id;
                 if ($locality->department) {
@@ -138,6 +326,24 @@ class IncidentController extends Controller
                 $provinceId = $sjProvince->id;
             }
         }
+
+        // --- Clasificación de Tipo de Vía y Nombre de Vía ---
+        $roadInfo = $this->resolveRoadInfo(
+            $validated['titulo'] ?? '',
+            $validated['descripcion'] ?? '',
+            (float) $validated['latitud'],
+            (float) $validated['longitud'],
+            $localityId,
+            $departmentId
+        );
+        $roadType = $roadInfo['road_type'];
+        $roadName = $roadInfo['road_name'];
+
+        // --- Clasificación de Movilidades (Vehículos/Actores) ---
+        $vehicles = $this->resolveVehicleParticipation(
+            $validated['titulo'] ?? '',
+            $validated['descripcion'] ?? ''
+        );
 
         // --- Lógica de Asociación de Fallecimiento Post-Evento ---
         // Si el reporte actual es fatal, intentamos vincularlo a un accidente previo
@@ -201,13 +407,22 @@ class IncidentController extends Controller
 
             $updateData = [];
 
-            if ($newLocationIsBetter) {
+            if ($newLocationIsBetter || $fuzzyDuplicate->road_type === 'Otro' || empty($fuzzyDuplicate->road_name)) {
                 $updateData['latitude'] = $validated['latitud'];
                 $updateData['longitude'] = $validated['longitud'];
                 $updateData['is_approximate'] = $newIsApprox;
                 $updateData['locality_id'] = $localityId;
                 $updateData['department_id'] = $departmentId;
                 $updateData['province_id'] = $provinceId;
+                $updateData['road_type'] = $roadType;
+                $updateData['road_name'] = $roadName;
+            }
+
+            // Fusión aditiva de vehículos involucrados
+            foreach (['has_car', 'has_pickup', 'has_utility', 'has_motorcycle', 'has_truck', 'has_bus', 'has_pedestrian', 'has_bicycle'] as $field) {
+                if ($vehicles[$field] && !$fuzzyDuplicate->$field) {
+                    $updateData[$field] = true;
+                }
             }
 
             // Preservación Cronológica: Conservar la fecha más antigua (real del suceso)
@@ -245,8 +460,8 @@ class IncidentController extends Controller
             'category_id'    => $category->id,
             'title'          => $validated['titulo'],
             'description'    => $validated['descripcion'],
-            'source_name'    => $validated['fuente_nombre'],
-            'source_url'     => $validated['fuente_url'],
+            'source_name'    => $validated['fuente_nombre'] ?? 'ZonData Web',
+            'source_url'     => $validated['fuente_url'] ?? 'http://zondata.test',
             'latitude'       => $validated['latitud'],
             'longitude'      => $validated['longitud'],
             'is_approximate' => $validated['is_approximate'] ?? false,
@@ -256,6 +471,16 @@ class IncidentController extends Controller
             'locality_id'    => $localityId,
             'department_id'  => $departmentId,
             'province_id'    => $provinceId,
+            'road_type'      => $roadType,
+            'road_name'      => $roadName,
+            'has_car'        => $vehicles['has_car'],
+            'has_pickup'     => $vehicles['has_pickup'],
+            'has_utility'    => $vehicles['has_utility'],
+            'has_motorcycle' => $vehicles['has_motorcycle'],
+            'has_truck'      => $vehicles['has_truck'],
+            'has_bus'        => $vehicles['has_bus'],
+            'has_pedestrian' => $vehicles['has_pedestrian'],
+            'has_bicycle'    => $vehicles['has_bicycle'],
         ]);
 
         return response()->json([

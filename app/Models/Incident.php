@@ -23,12 +23,30 @@ class Incident extends Model
         'locality_id',
         'department_id',
         'province_id',
+        'road_type',
+        'road_name',
+        'has_car',
+        'has_pickup',
+        'has_utility',
+        'has_motorcycle',
+        'has_truck',
+        'has_bus',
+        'has_pedestrian',
+        'has_bicycle',
     ];
 
     protected $casts = [
         'event_date' => 'datetime',
         'is_approximate' => 'boolean',
         'is_fatal' => 'boolean',
+        'has_car' => 'boolean',
+        'has_pickup' => 'boolean',
+        'has_utility' => 'boolean',
+        'has_motorcycle' => 'boolean',
+        'has_truck' => 'boolean',
+        'has_bus' => 'boolean',
+        'has_pedestrian' => 'boolean',
+        'has_bicycle' => 'boolean',
     ];
 
     public function category()

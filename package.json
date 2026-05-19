@@ -5,8 +5,8 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "scraper": "python scrapers/rss_scraper.py --daemon",
-        "test:sources": "python scrapers/test_sources.py",
+        "scraper": "python -u scrapers/rss_scraper.py --daemon",
+        "test:sources": "python -u scrapers/test_sources.py",
         "start": "concurrently --names \"VITE,SCRAPER\" --prefix-colors \"cyan,yellow\" \"npm run dev\" \"npm run scraper\""
     },
     "devDependencies": {
