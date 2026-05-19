@@ -20,6 +20,9 @@ class Incident extends Model
         'is_fatal',
         'event_date',
         'status',
+        'locality_id',
+        'department_id',
+        'province_id',
     ];
 
     protected $casts = [

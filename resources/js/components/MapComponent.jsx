@@ -5,7 +5,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { es } from 'date-fns/locale/es';
 import L from 'leaflet';
-import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity } from 'lucide-react';
+import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw } from 'lucide-react';
 
 // Fix for default Leaflet icons in React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -95,7 +95,13 @@ const MapComponent = () => {
     });
     
     // Estados para Filtros
-    const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(() => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    });
     const [visibleTabs, setVisibleTabs] = useState(['wind', 'accident', 'fire']); // Por defecto todos activos
     const [loading, setLoading] = useState(false);
     const [premiumError, setPremiumError] = useState(false);
@@ -146,34 +152,34 @@ const MapComponent = () => {
     // Center on entire San Juan Province
     const position = [-30.8654, -68.8895];
 
-    useEffect(() => {
-        const fetchIncidents = () => {
-            setLoading(true);
-            setPremiumError(false);
-            
-            fetch(`/api/incidents?date=${selectedDate}`)
-                .then(res => {
-                    if (res.status === 402) {
-                        setPremiumError(true);
-                        throw new Error("Premium Required");
-                    }
-                    return res.json();
-                })
-                .then(data => {
-                    const items = data?.data ?? data;
-                    setIncidents(Array.isArray(items) ? items : []);
-                    setLastSync(new Date()); 
-                    setLoading(false);
-                })
-                .catch(err => {
-                    console.error("Error fetching incidents:", err);
-                    if (!premiumError) setIncidents([]);
-                    setLoading(false);
-                });
-        };
+    const fetchIncidents = () => {
+        setLoading(true);
+        setPremiumError(false);
+        
+        fetch(`/api/incidents?date=${selectedDate}`)
+            .then(res => {
+                if (res.status === 402) {
+                    setPremiumError(true);
+                    throw new Error("Premium Required");
+                }
+                return res.json();
+            })
+            .then(data => {
+                const items = data?.data ?? data;
+                setIncidents(Array.isArray(items) ? items : []);
+                setLastSync(new Date()); 
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error("Error fetching incidents:", err);
+                if (!premiumError) setIncidents([]);
+                setLoading(false);
+            });
+    };
 
+    useEffect(() => {
         fetchIncidents();
-        const interval = setInterval(fetchIncidents, 300000);
+        const interval = setInterval(fetchIncidents, 30000); // 30 segundos
         return () => clearInterval(interval);
     }, [selectedDate]);
 
@@ -346,45 +352,62 @@ const MapComponent = () => {
                                         ? 'bg-emerald-50 border-emerald-300'
                                         : 'bg-slate-50 border-slate-200'
                             }`}>
-                            <div className="flex items-center gap-2.5">
-                                {/* Punto de estado con anillo */}
-                                <span className="relative flex-shrink-0 w-4 h-4">
-                                    {(loading || incidents.length > 0) && (
-                                        <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 animate-ping ${
-                                            loading ? 'bg-amber-400' : 'bg-emerald-500'
+                            <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    {/* Punto de estado con anillo */}
+                                    <span className="relative flex-shrink-0 w-4 h-4">
+                                        {(loading || incidents.length > 0) && (
+                                            <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 animate-ping ${
+                                                loading ? 'bg-amber-400' : 'bg-emerald-500'
+                                            }`} />
+                                        )}
+                                        <span className={`relative inline-flex w-4 h-4 rounded-full ${
+                                            loading
+                                                ? 'bg-amber-400'
+                                                : incidents.length > 0
+                                                    ? 'bg-emerald-500'
+                                                    : 'bg-slate-400'
                                         }`} />
-                                    )}
-                                    <span className={`relative inline-flex w-4 h-4 rounded-full ${
-                                        loading
-                                            ? 'bg-amber-400'
-                                            : incidents.length > 0
-                                                ? 'bg-emerald-500'
-                                                : 'bg-slate-400'
-                                    }`} />
-                                </span>
+                                    </span>
 
-                                <div className="min-w-0">
-                                    {/* Línea 1: estado principal */}
-                                    <p className={`text-xs font-bold leading-tight ${
-                                        loading
-                                            ? 'text-amber-700'
-                                            : incidents.length > 0
-                                                ? 'text-emerald-700'
-                                                : 'text-slate-600'
-                                    }`}>
-                                        {loading
-                                            ? '⟳ Sincronizando RSS...'
-                                            : incidents.length > 0
-                                                ? `✓ ${incidents.length} incidente${incidents.length > 1 ? 's' : ''} detectado${incidents.length > 1 ? 's' : ''}`
-                                                : '— Sin incidentes detectados'}
-                                    </p>
-                                    {/* Línea 2: tiempo de sincronización */}
-                                    {lastSync && !loading && (
-                                        <p className="text-[10px] text-slate-400 mt-0.5">
-                                            Última sincronización: {relativeTime(lastSync)}
+                                    <div className="min-w-0">
+                                        {/* Línea 1: estado principal */}
+                                        <p className={`text-xs font-bold leading-tight ${
+                                            loading
+                                                ? 'text-amber-700'
+                                                : incidents.length > 0
+                                                    ? 'text-emerald-700'
+                                                    : 'text-slate-600'
+                                        }`}>
+                                            {loading
+                                                ? '⟳ Sincronizando RSS...'
+                                                : incidents.length > 0
+                                                    ? `✓ ${incidents.length} incidente${incidents.length > 1 ? 's' : ''} detectado${incidents.length > 1 ? 's' : ''}`
+                                                    : '— Sin incidentes detectados'}
                                         </p>
-                                    )}
+                                        {/* Línea 2: tiempo de sincronización */}
+                                        {lastSync && !loading && (
+                                            <p className="text-[10px] text-slate-400 mt-0.5">
+                                                Última sincronización: {relativeTime(lastSync)}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
+                                
+                                {/* Botón de Refresco Manual */}
+                                <button
+                                    onClick={fetchIncidents}
+                                    disabled={loading}
+                                    className={`p-1.5 rounded-lg transition-all hover:bg-black/5 active:scale-95 shrink-0 ${
+                                        loading 
+                                            ? 'text-amber-500 cursor-not-allowed' 
+                                            : 'text-slate-500 hover:text-[#002D62]'
+                                    }`}
+                                    title="Sincronizar ahora"
+                                    aria-label="Sincronizar ahora"
+                                >
+                                    <RotateCw size={14} className={loading ? 'animate-spin' : ''} />
+                                </button>
                             </div>
                         </div>
                         )}

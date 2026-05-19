@@ -43,6 +43,16 @@ class IncidentController extends Controller
         return response()->json($incidents);
     }
 
+    private function normalizeText(string $text): string
+    {
+        $text = mb_strtolower($text, 'UTF-8');
+        $replacements = [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+            'ü' => 'u', 'ñ' => 'n', 'í' => 'i', 'ó' => 'o', 'ú' => 'u'
+        ];
+        return strtr($text, $replacements);
+    }
+
     public function store(Request $request)
     {
         // Validación básica
@@ -66,7 +76,7 @@ class IncidentController extends Controller
             ['name' => ucfirst($validated['etiqueta'])]
         );
 
-        // Prevenir duplicados (Misma URL o Mismo Título)
+        // Prevenir duplicados directos (Misma URL o Mismo Título)
         if (!empty($validated['fuente_url'])) {
             $existing = Incident::where('source_url', $validated['fuente_url'])->first();
             if ($existing) {
@@ -85,9 +95,53 @@ class IncidentController extends Controller
             ], 200);
         }
 
+        // --- Resolución de Jerarquía de Ubicaciones ---
+        $localityId = null;
+        $departmentId = null;
+        $provinceId = null;
+
+        $textToSearch = $this->normalizeText(($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? ''));
+
+        // Cargar todas las localidades con sus departamentos y provincias de forma optimizada
+        $localities = \App\Models\Locality::with('department.province')->get();
+        $departments = \App\Models\Department::with('province')->get();
+
+        // 1. Buscar localidad en el texto (mayor especificidad)
+        foreach ($localities as $locality) {
+            $normalizedLocName = $this->normalizeText($locality->name);
+            if (strlen($normalizedLocName) > 3 && str_contains($textToSearch, $normalizedLocName)) {
+                $localityId = $locality->id;
+                $departmentId = $locality->department_id;
+                if ($locality->department) {
+                    $provinceId = $locality->department->province_id;
+                }
+                break;
+            }
+        }
+
+        // 2. Si no se encontró localidad, buscar departamento
+        if (!$localityId) {
+            foreach ($departments as $department) {
+                $normalizedDeptName = $this->normalizeText($department->name);
+                if (strlen($normalizedDeptName) > 3 && str_contains($textToSearch, $normalizedDeptName)) {
+                    $departmentId = $department->id;
+                    $provinceId = $department->province_id;
+                    break;
+                }
+            }
+        }
+
+        // 3. Fallback: Asociar por defecto a la provincia de San Juan
+        if (!$provinceId) {
+            $sjProvince = \App\Models\Province::where('name', 'San Juan')->first();
+            if ($sjProvince) {
+                $provinceId = $sjProvince->id;
+            }
+        }
+
         // --- Lógica de Asociación de Fallecimiento Post-Evento ---
         // Si el reporte actual es fatal, intentamos vincularlo a un accidente previo
-        if ($validated['is_fatal']) {
+        if (!empty($validated['is_fatal'])) {
             $isAccident = collect(['choque', 'vuelco', 'atropello', 'accidente', 'transito'])
                 ->contains(fn($word) => str_contains(strtolower($validated['etiqueta']), $word));
 
@@ -115,21 +169,73 @@ class IncidentController extends Controller
         }
         // ---------------------------------------------------------
 
-        // --- Lógica de Duplicados Cercanos (Fuzzy) ---
-        // Si ya hay un incidente de la misma categoría en un radio de ~1km en los últimos 2 días,
-        // lo consideramos el mismo evento reportado por otro medio.
+        // --- Lógica de Duplicados Cercanos (Fuzzy) y Fusión Inteligente ---
+        // Buscamos si ya hay un incidente de la misma categoría en un radio de ~1km
+        // dentro de una ventana temporal de ±2 días (preservación cronológica).
+        $eventDate = \Carbon\Carbon::parse($validated['event_date'] ?? now());
         $fuzzyDuplicate = Incident::where('category_id', $category->id)
             ->whereBetween('event_date', [
-                \Carbon\Carbon::parse($validated['event_date'])->subDays(2),
-                \Carbon\Carbon::parse($validated['event_date'])->addDays(2)
+                $eventDate->copy()->subDays(2),
+                $eventDate->copy()->addDays(2)
             ])
             ->whereBetween('latitude', [$validated['latitud'] - 0.01, $validated['latitud'] + 0.01])
             ->whereBetween('longitude', [$validated['longitud'] - 0.01, $validated['longitud'] + 0.01])
             ->first();
 
         if ($fuzzyDuplicate) {
+            $existingHasLocality = !empty($fuzzyDuplicate->locality_id);
+            $newHasLocality = !empty($localityId);
+            
+            $existingIsApprox = (bool) $fuzzyDuplicate->is_approximate;
+            $newIsApprox = (bool) ($validated['is_approximate'] ?? false);
+
+            $newLocationIsBetter = false;
+
+            if ($existingIsApprox && !$newIsApprox) {
+                // El nuevo es preciso y el existente era aproximado
+                $newLocationIsBetter = true;
+            } elseif (!$existingHasLocality && $newHasLocality) {
+                // El nuevo tiene una localidad específica asociada y el existente no
+                $newLocationIsBetter = true;
+            }
+
+            $updateData = [];
+
+            if ($newLocationIsBetter) {
+                $updateData['latitude'] = $validated['latitud'];
+                $updateData['longitude'] = $validated['longitud'];
+                $updateData['is_approximate'] = $newIsApprox;
+                $updateData['locality_id'] = $localityId;
+                $updateData['department_id'] = $departmentId;
+                $updateData['province_id'] = $provinceId;
+            }
+
+            // Preservación Cronológica: Conservar la fecha más antigua (real del suceso)
+            $existingEventDate = \Carbon\Carbon::parse($fuzzyDuplicate->event_date);
+            if ($eventDate->lt($existingEventDate)) {
+                $updateData['event_date'] = $eventDate;
+            }
+
+            // Si el nuevo es fatal y el existente no, actualizarlo
+            if (($validated['is_fatal'] ?? false) && !$fuzzyDuplicate->is_fatal) {
+                $updateData['is_fatal'] = true;
+            }
+
+            // Enriquecimiento de descripción: Concatenar detalles sin duplicar
+            if (!empty($validated['descripcion'])) {
+                $trimmedDesc = trim($validated['descripcion']);
+                if (!str_contains($fuzzyDuplicate->description, $trimmedDesc)) {
+                    $fuenteInfo = $validated['fuente_nombre'] ?? 'otra fuente';
+                    $updateData['description'] = $fuzzyDuplicate->description . "\n\n[Reporte alternativo de " . $fuenteInfo . "]: " . $validated['descripcion'];
+                }
+            }
+
+            if (!empty($updateData)) {
+                $fuzzyDuplicate->update($updateData);
+            }
+
             return response()->json([
-                'message' => 'Incidente ya registrado por otro medio (Cercanía/Categoría)',
+                'message' => 'Incidente duplicado detectado. Se ha fusionado y enriquecido con la información actual.',
                 'incident' => $fuzzyDuplicate
             ], 200);
         }
@@ -146,7 +252,10 @@ class IncidentController extends Controller
             'is_approximate' => $validated['is_approximate'] ?? false,
             'is_fatal'       => $validated['is_fatal'] ?? null,
             'status'         => 'Published',
-            'event_date'     => $validated['event_date'] ?? now(),
+            'event_date'     => $eventDate,
+            'locality_id'    => $localityId,
+            'department_id'  => $departmentId,
+            'province_id'    => $provinceId,
         ]);
 
         return response()->json([
