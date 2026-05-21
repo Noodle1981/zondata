@@ -155,6 +155,8 @@ const MapComponent = () => {
     const fetchIncidents = () => {
         setLoading(true);
         setPremiumError(false);
+        const startTime = Date.now();
+        const minDelay = 1000; // Mínimo de 1 segundo para feedback visual premium
         
         fetch(`/api/incidents?date=${selectedDate}`)
             .then(res => {
@@ -166,14 +168,24 @@ const MapComponent = () => {
             })
             .then(data => {
                 const items = data?.data ?? data;
-                setIncidents(Array.isArray(items) ? items : []);
-                setLastSync(new Date()); 
-                setLoading(false);
+                const elapsed = Date.now() - startTime;
+                const remaining = Math.max(0, minDelay - elapsed);
+                
+                setTimeout(() => {
+                    setIncidents(Array.isArray(items) ? items : []);
+                    setLastSync(new Date()); 
+                    setLoading(false);
+                }, remaining);
             })
             .catch(err => {
                 console.error("Error fetching incidents:", err);
-                if (!premiumError) setIncidents([]);
-                setLoading(false);
+                const elapsed = Date.now() - startTime;
+                const remaining = Math.max(0, minDelay - elapsed);
+                
+                setTimeout(() => {
+                    if (!premiumError) setIncidents([]);
+                    setLoading(false);
+                }, remaining);
             });
     };
 

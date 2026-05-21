@@ -1,0 +1,9 @@
+{
+  "locality_exclusions": [
+    "cabecera",
+    "san juan"
+  ],
+  "clean_prefixes": [
+    "^(?:b[°º\\.]|barrio|v[°º\\.]|villa|paraje)\\s+"
+  ]
+}

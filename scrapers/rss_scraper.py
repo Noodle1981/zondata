@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import time
 import sqlite3
 import re
+import json
 from datetime import datetime
 import html
 from geopy.geocoders import Nominatim
@@ -127,6 +128,77 @@ DEPARTAMENTOS = [
 # Configuración de Base de Datos (Ruta absoluta relativa al script para evitar fallos de ejecución)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "database", "database.sqlite")
+RULES_PATH = os.path.join(BASE_DIR, "scrapers", "geocoding_rules.json")
+
+# Cargar reglas de geolocalización desde JSON con fallback seguro
+try:
+    with open(RULES_PATH, "r", encoding="utf-8") as f:
+        GEO_RULES = json.load(f)
+except Exception as e:
+    print(f"[WARNING] No se pudo cargar geocoding_rules.json ({e}). Usando valores por defecto.")
+    GEO_RULES = {
+        "locality_exclusions": ["cabecera", "san juan"],
+        "clean_prefixes": ["^(?:b[°º\\.]|barrio|v[°º\\.]|villa|paraje)\\s+"]
+    }
+
+def init_cache_db():
+    """Inicializa la tabla de caché de geolocalización si no existe"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS geocoding_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query TEXT UNIQUE,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                is_approximate INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] No se pudo inicializar la tabla de caché: {e}")
+
+def get_cached_coords(query):
+    """Consulta si la query ya fue geolocalizada previamente"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT latitude, longitude, is_approximate FROM geocoding_cache WHERE query = ?", (query,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return row[0], row[1], bool(row[2])
+    except Exception as e:
+        print(f"[ERROR] Error al consultar caché: {e}")
+    return None
+
+def save_to_cache(query, lat, lon, is_approx):
+    """Guarda una geolocalización en la caché para evitar futuras consultas de API"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO geocoding_cache (query, latitude, longitude, is_approximate)
+            VALUES (?, ?, ?, ?)
+        """, (query, lat, lon, int(is_approx)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] Error al guardar en caché: {e}")
+
+# Inicializar caché en el arranque
+init_cache_db()
+
+def clean_locality_name(name):
+    # Quitar parte después de guión (ej: "Vallecito - Paraje..." -> "Vallecito")
+    name_clean = name.split('-')[0].strip()
+    # Quitar prefijos comunes usando el patrón del JSON
+    for pattern in GEO_RULES.get("clean_prefixes", []):
+        name_clean = re.sub(pattern, '', name_clean, flags=re.IGNORECASE)
+    return name_clean.strip()
 
 def load_locations():
     """Carga departamentos y localidades (con su departamento) desde la DB"""
@@ -147,7 +219,30 @@ def load_locations():
             JOIN departments d ON l.department_id = d.id
         """)
         for loc_name, dept_name in cursor.fetchall():
+            # Exclusión basada en JSON
+            should_exclude = False
+            for exclusion in GEO_RULES.get("locality_exclusions", []):
+                if exclusion.lower() in loc_name.lower():
+                    should_exclude = True
+                    break
+            if should_exclude:
+                continue
+            
+            # Guardar el original
             locs_with_context[loc_name] = f"{loc_name}, {dept_name}"
+            
+            # Guardar versión limpia (ej: "Media Agua" de "V° Media Agua")
+            cleaned_name = clean_locality_name(loc_name)
+            
+            # Exclusión basada en JSON para nombre limpio
+            should_exclude_cleaned = False
+            for exclusion in GEO_RULES.get("locality_exclusions", []):
+                if exclusion.lower() == cleaned_name.lower():
+                    should_exclude_cleaned = True
+                    break
+                    
+            if len(cleaned_name) > 3 and not should_exclude_cleaned and cleaned_name not in locs_with_context:
+                locs_with_context[cleaned_name] = f"{cleaned_name}, {dept_name}"
         
         conn.close()
         print(f"[INFO] Ubicaciones cargadas: {len(depts)} departamentos, {len(locs_with_context)} localidades.")
@@ -159,21 +254,22 @@ def load_locations():
     return depts, locs_with_context
 
 DEPARTAMENTOS, LOCALIDADES_CONTEXT = load_locations()
-LOCALIDADES = list(LOCALIDADES_CONTEXT.keys())
+LOCALIDADES = sorted(list(LOCALIDADES_CONTEXT.keys()), key=len, reverse=True)
 
 print(f"[INFO] Scraper iniciado correctamente. Listo para procesar.")
 
 BLACKLIST_PROVINCIAS = ["santa fe", "mendoza", "buenos aires", "córdoba", "cordoba", "san luis", "chile", "nacional", "rosario", "neuquén", "misionero", "corrientes"]
 
 def clean_location_query(text):
-    # Eliminar menciones a otras provincias para no confundir al geocoder
-    cleaned = text.lower()
+    # Conservar el casing original para que coincidan las mayúsculas de nombres propios
+    cleaned = text
+    # Eliminar menciones a otras provincias para no confundir al geocoder (case-insensitive)
     for prov in BLACKLIST_PROVINCIAS:
-        cleaned = cleaned.replace(prov, "")
-    # Eliminar palabras que suelen acompañar procedencia
+        cleaned = re.sub(re.escape(prov), "", cleaned, flags=re.IGNORECASE)
+    # Eliminar palabras que suelen acompañar procedencia (case-insensitive)
     noise = ["de buenos aires", "oriundo de", "proveniente de", "viajaba desde", "hacia", "rumbo a"]
     for word in noise:
-        cleaned = cleaned.replace(word, "")
+        cleaned = re.sub(re.escape(word), "", cleaned, flags=re.IGNORECASE)
     return cleaned
 
 BLACKLIST_KEYWORDS = [
@@ -182,7 +278,11 @@ BLACKLIST_KEYWORDS = [
     "escuela", "curso", "capacitación", "capacitacion", "proyecto", "campaña", 
     "historia de", "entrevista", "emicar", "clases", "inscripción", "inscripcion",
     "allanamiento", "detenido", "detenidos", "droga", "estupefacientes", "animales silvestres",
-    "fauna", "caza ilegal", "secuestraron armas"
+    "fauna", "caza ilegal", "secuestraron armas",
+    "obra vial", "obras viales", "obra pública", "obra publica", "obras públicas", "obras publicas",
+    "licitación", "licitacion", "licitar", "remodelación", "remodelacion",
+    "apertura de sobres", "pavimentación", "pavimentacion", "bacheo", "repavimentación", "repavimentacion",
+    "seguridad vial", "educación vial", "educacion vial", "taller de", "charlas de"
 ]
 
 MEDIA_NAMES = {
@@ -205,6 +305,28 @@ geolocator = Nominatim(user_agent="zondata_scraper")
 def is_within_bounds(lat, lon):
     return BOUNDING_BOX[0] <= lat <= BOUNDING_BOX[1] and BOUNDING_BOX[2] <= lon <= BOUNDING_BOX[3]
 
+def resolve_geocode(query_str, is_approx):
+    """
+    Resuelve una geolocalización utilizando primero la caché local y, si no existe,
+    realiza la consulta externa (Nominatim) y almacena el resultado exitoso en caché.
+    """
+    # 1. Consultar caché local
+    cached = get_cached_coords(query_str)
+    if cached is not None:
+        return cached[0], cached[1] # lat, lon
+
+    # 2. Si no está en caché, geocodificar con Nominatim
+    try:
+        location = geolocator.geocode(query_str, timeout=10)
+        if location and is_within_bounds(location.latitude, location.longitude):
+            # Guardar en la caché local
+            save_to_cache(query_str, location.latitude, location.longitude, is_approx)
+            return location.latitude, location.longitude
+    except Exception as e:
+        print(f"[WARNING] Falló consulta externa para '{query_str}': {e}")
+        pass
+    return None
+
 def get_hierarchical_context(text):
     """
     Busca contexto siguiendo la prioridad: Localidad -> Departamento -> Provincia
@@ -212,6 +334,21 @@ def get_hierarchical_context(text):
     # 1. Prioridad: Localidad (Máxima precisión con su departamento)
     for loc, context in LOCALIDADES_CONTEXT.items():
         if loc.lower() in text.lower():
+            # Evitar colisión si el nombre de la localidad coincide con un departamento
+            # (ej: "Sarmiento" de "Villa Sarmiento", "San Martín" de "Villa San Martín")
+            is_collision = False
+            for dept in DEPARTAMENTOS:
+                if loc.lower() == dept.lower():
+                    is_collision = True
+                    break
+            
+            if is_collision:
+                # Exigir que la frase completa de la localidad (o versiones con villa/barrio)
+                # esté en el texto para diferenciarlo del departamento homónimo.
+                full_names_to_check = [f"villa {loc.lower()}", f"b° {loc.lower()}", f"barrio {loc.lower()}"]
+                if not any(fn in text.lower() for fn in full_names_to_check):
+                    continue
+            
             return f"{context}, San Juan, Argentina"
 
     # 2. Prioridad: Departamento
@@ -224,44 +361,98 @@ def get_hierarchical_context(text):
 def geocoding_funnel(text):
     # Limpiar el texto de ruidos geográficos (Buenos Aires, etc) antes de buscar patrones
     text_clean = clean_location_query(text)
+    local_context = get_hierarchical_context(text)
     
-    patterns = [
+    # 1. Caso especial: Ruta y Calle numérica (ej. Ruta 40 y Calle 9 o Calles 9 y 10)
+    ruta_match = re.search(r"([Rr]uta\s+\d+)", text_clean, re.IGNORECASE)
+    calle_num_match = re.search(r"(?:[Cc]alle[s]?)\s+(\d+)", text_clean, re.IGNORECASE)
+    if ruta_match and calle_num_match:
+        ruta = ruta_match.group(1)
+        calle_num = calle_num_match.group(1)
+        query = f"{ruta} & Calle {calle_num}, {local_context}"
+        coords = resolve_geocode(query, False)
+        if coords:
+            return coords[0], coords[1], False
+
+    # 2. Caso especial: Intersección de calle numérica y otra calle numérica (ej. Calle 9 y 10)
+    calle_num_interseccion = re.search(r"[Cc]alle[s]?\s+(\d+)\s+(?:y|e|entre)\s+(\d+)", text_clean, re.IGNORECASE)
+    if calle_num_interseccion:
+        c1 = calle_num_interseccion.group(1)
+        c2 = calle_num_interseccion.group(2)
+        query = f"Calle {c1} & Calle {c2}, {local_context}"
+        coords = resolve_geocode(query, False)
+        if coords:
+            return coords[0], coords[1], False
+
+    intersection_patterns = [
+        # Ruta X y Calle Nombre (ej. Ruta 40 y Agustín Gómez)
+        r"([Rr]uta\s+\d+)\s+(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)",
+        # Calle Nombre y Ruta X (ej. Agustín Gómez y Ruta 40)
+        r"(?:[Cc]alle|[Aa]v\.?|[Aa]venida)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con)\s*([Rr]uta\s+\d+)",
+        # Calle Nombre y Calle Nombre
+        r"(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)"
+    ]
+    
+    linear_precise_patterns = [
+        # Ruta X Km Y
         r"([Rr]uta\s+\d+)\s+(?:[Kk]m\.?|[Kk]il[óo]metro)\s+(\d+)",
-        r"(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)",
-        r"([Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s+(?:al|altura)\s+(\d+)",
+        # Calle Nombre al X (altura)
+        r"([Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s+(?:al|altura)\s+(\d+)"
+    ]
+    
+    approximate_patterns = [
         r"([Rr]uta\s+\d+)",
         r"([Aa]eropuerto|[Tt]erminal|[Cc]entro|[Pp]laza|[Bb]arrio|[Vv]illa)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)"
     ]
     
-    local_context = get_hierarchical_context(text)
-    
-    for pattern in patterns:
+    for pattern in intersection_patterns:
+        match = re.search(pattern, text_clean)
+        if match:
+            query = " & ".join(filter(None, match.groups()))
+            coords = resolve_geocode(f"{query}, {local_context}", False)
+            if coords:
+                return coords[0], coords[1], False
+
+    for pattern in linear_precise_patterns:
         match = re.search(pattern, text_clean)
         if match:
             query = " ".join(filter(None, match.groups()))
-            try:
-                # Búsqueda ultra-específica con contexto local jerárquico
-                location = geolocator.geocode(f"{query}, {local_context}", timeout=10)
-                if location and is_within_bounds(location.latitude, location.longitude):
-                    return location.latitude, location.longitude, False
-            except:
-                pass
+            coords = resolve_geocode(f"{query}, {local_context}", False)
+            if coords:
+                return coords[0], coords[1], False
+
+    for pattern in approximate_patterns:
+        match = re.search(pattern, text_clean)
+        if match:
+            query = " ".join(filter(None, match.groups()))
+            coords = resolve_geocode(f"{query}, {local_context}", True)
+            if coords:
+                return coords[0], coords[1], True
+
     for loc in LOCALIDADES:
         if loc.lower() in text.lower():
-            try:
-                location = geolocator.geocode(f"{loc}, San Juan, Argentina", timeout=10)
-                if location and is_within_bounds(location.latitude, location.longitude):
-                    return location.latitude, location.longitude, True
-            except:
-                pass
+            # Evitar colisión si el nombre de la localidad coincide con un departamento
+            is_collision = False
+            for dept in DEPARTAMENTOS:
+                if loc.lower() == dept.lower():
+                    is_collision = True
+                    break
+            
+            if is_collision:
+                full_names_to_check = [f"villa {loc.lower()}", f"b° {loc.lower()}", f"barrio {loc.lower()}"]
+                if not any(fn in text.lower() for fn in full_names_to_check):
+                    continue
+            
+            coords = resolve_geocode(f"{LOCALIDADES_CONTEXT[loc]}, San Juan, Argentina", True)
+            if coords:
+                return coords[0], coords[1], True
+
     for dept in DEPARTAMENTOS:
         if dept.lower() in text.lower():
-            try:
-                location = geolocator.geocode(f"{dept}, San Juan, Argentina", timeout=10)
-                if location and is_within_bounds(location.latitude, location.longitude):
-                    return location.latitude, location.longitude, True
-            except:
-                pass
+            coords = resolve_geocode(f"{dept}, San Juan, Argentina", True)
+            if coords:
+                return coords[0], coords[1], True
+
     if any(loc.lower() in text.lower() for loc in LOCALIDADES) or any(dept.lower() in text.lower() for dept in DEPARTAMENTOS) or "san juan" in text.lower():
         return -31.5375, -68.53639, True
     return None

@@ -286,18 +286,33 @@ class IncidentController extends Controller
             // Extraer parte antes de guión si existe (ej: "Vallecito - Paraje..." -> "Vallecito")
             $parts = explode('-', $normalizedName);
             $core = trim($parts[0]);
-            // Quitar prefijos comunes
-            $core = preg_replace('/^(bº|villa|paraje)\s+/', '', $core);
+            // Quitar prefijos comunes (villa, barrio, bº, b°, vº, v°, etc.)
+            $core = preg_replace('/^(b[º°\.]|villa|v[º°\.]|paraje)\s+/', '', $core);
             $locality->core_name_cleaned = trim($core);
             return $locality;
         })->sortByDesc(function ($locality) {
             return strlen($locality->core_name_cleaned);
         });
 
+        // Obtener nombres de todos los departamentos en minúscula para evitar colisiones
+        $departmentNamesLower = $departments->map(function ($d) {
+            return $this->normalizeText($d->name);
+        })->toArray();
+
         // 1. Buscar localidad en el texto (mayor especificidad)
         foreach ($localitiesWithCoreName as $locality) {
             $coreName = $locality->core_name_cleaned;
             if (strlen($coreName) > 3 && str_contains($textToSearch, $coreName)) {
+                // Evitar colisión si el nombre de la localidad coincide con el de un departamento.
+                // (ej: "sarmiento" de "Villa Sarmiento", "san martin" de "Villa San Martín").
+                // En este caso, exigir el nombre completo normalizado de la localidad en el texto.
+                if (in_array($coreName, $departmentNamesLower)) {
+                    $normalizedFullName = $this->normalizeText($locality->name);
+                    if (!str_contains($textToSearch, $normalizedFullName)) {
+                        continue;
+                    }
+                }
+                
                 $localityId = $locality->id;
                 $departmentId = $locality->department_id;
                 if ($locality->department) {
