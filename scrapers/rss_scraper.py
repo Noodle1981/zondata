@@ -71,7 +71,7 @@ HTML_SOURCES = [
     {
         "url": "https://www.0264noticias.com.ar/policiales",
         "medio": "0264Noticias",
-        "article_selector": r'<a[^>]*class="[^"]*w-full[^"]*"[^>]*href="(/noticias/[^"]+)"[^>]*>.*?<h3[^>]*>(.*?)</h3>\s*(?:<h2[^>]*>)?(.*?)(?:</h2>)?\s*</a>',
+        "article_selector": r'<a[^>]*class="[^"]*w-full[^"]*"[^>]*href="(/noticias/[^"]+)"[^>]*>(?:\s*<h3[^>]*>.*?</h3>)?\s*<h2[^>]*>(.*?)</h2>\s*</a>',
     },
     {
         "url": "https://www.sanjuan8.com/policiales",
@@ -191,6 +191,19 @@ def save_to_cache(query, lat, lon, is_approx):
 
 # Inicializar caché en el arranque
 init_cache_db()
+
+def is_url_processed(url):
+    """Verifica en la BD local si la URL ya fue ingresada para evitar raspado redundante"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM incidents WHERE source_url = ?", (url,))
+        row = cursor.fetchone()
+        conn.close()
+        return row is not None
+    except Exception as e:
+        print(f"[ERROR] Error al verificar URL duplicada en la DB: {e}")
+        return False
 
 def clean_locality_name(name):
     # Quitar parte después de guión (ej: "Vallecito - Paraje..." -> "Vallecito")
@@ -327,13 +340,22 @@ def resolve_geocode(query_str, is_approx):
         pass
     return None
 
+def sanitize_location_text(text):
+    """Limpia el texto de falsos positivos de ubicación como Hospital Rawson"""
+    cleaned = text
+    cleaned = re.sub(r'hospital(?:\s+dr\.?)?(?:\s+guillermo)?\s+rawson', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'hospital\s+rawson', '', cleaned, flags=re.IGNORECASE)
+    return cleaned
+
 def get_hierarchical_context(text):
     """
     Busca contexto siguiendo la prioridad: Localidad -> Departamento -> Provincia
     """
+    text = sanitize_location_text(text)
     # 1. Prioridad: Localidad (Máxima precisión con su departamento)
-    for loc, context in LOCALIDADES_CONTEXT.items():
-        if loc.lower() in text.lower():
+    for loc in LOCALIDADES:
+        pattern = r'\b' + re.escape(loc) + r'\b'
+        if re.search(pattern, text, re.IGNORECASE):
             # Evitar colisión si el nombre de la localidad coincide con un departamento
             # (ej: "Sarmiento" de "Villa Sarmiento", "San Martín" de "Villa San Martín")
             is_collision = False
@@ -349,19 +371,21 @@ def get_hierarchical_context(text):
                 if not any(fn in text.lower() for fn in full_names_to_check):
                     continue
             
-            return f"{context}, San Juan, Argentina"
+            return f"{LOCALIDADES_CONTEXT[loc]}, San Juan, Argentina"
 
     # 2. Prioridad: Departamento
     for dept in DEPARTAMENTOS:
-        if dept.lower() in text.lower():
+        pattern = r'\b' + re.escape(dept) + r'\b'
+        if re.search(pattern, text, re.IGNORECASE):
             return f"{dept}, San Juan, Argentina"
             
     return "San Juan, Argentina"
 
 def geocoding_funnel(text):
     # Limpiar el texto de ruidos geográficos (Buenos Aires, etc) antes de buscar patrones
-    text_clean = clean_location_query(text)
-    local_context = get_hierarchical_context(text)
+    text_sanitized = sanitize_location_text(text)
+    text_clean = clean_location_query(text_sanitized)
+    local_context = get_hierarchical_context(text_sanitized)
     
     # 1. Caso especial: Ruta y Calle numérica (ej. Ruta 40 y Calle 9 o Calles 9 y 10)
     ruta_match = re.search(r"([Rr]uta\s+\d+)", text_clean, re.IGNORECASE)
@@ -386,18 +410,18 @@ def geocoding_funnel(text):
 
     intersection_patterns = [
         # Ruta X y Calle Nombre (ej. Ruta 40 y Agustín Gómez)
-        r"([Rr]uta\s+\d+)\s+(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)",
+        r"([Rr]uta\s+\d+)\s+(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle[s]?|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)",
         # Calle Nombre y Ruta X (ej. Agustín Gómez y Ruta 40)
-        r"(?:[Cc]alle|[Aa]v\.?|[Aa]venida)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con)\s*([Rr]uta\s+\d+)",
+        r"(?:[Cc]alle[s]?|[Aa]v\.?|[Aa]venida)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con)\s*([Rr]uta\s+\d+)",
         # Calle Nombre y Calle Nombre
-        r"(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)"
+        r"(?:[Cc]alle[s]?|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s*(?:y|e|esquina|intersección\s+con|a\s+la\s+altura\s+de|frente\s+al)\s*(?:[Cc]alle[s]?|[Aa]v\.?|[Aa]venida|[Rr]uta)?\s*([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)"
     ]
     
     linear_precise_patterns = [
         # Ruta X Km Y
         r"([Rr]uta\s+\d+)\s+(?:[Kk]m\.?|[Kk]il[óo]metro)\s+(\d+)",
         # Calle Nombre al X (altura)
-        r"([Cc]alle|[Aa]v\.?|[Aa]venida|[Rr]uta)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s+(?:al|altura)\s+(\d+)"
+        r"([Cc]alle[s]?|[Aa]v\.?|[Aa]venida|[Rr]uta)\s+([A-ZÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÁÉÍÓÚ][a-zñáéíóú]+)*)\s+(?:al|altura)\s+(\d+)"
     ]
     
     approximate_patterns = [
@@ -412,6 +436,10 @@ def geocoding_funnel(text):
             coords = resolve_geocode(f"{query}, {local_context}", False)
             if coords:
                 return coords[0], coords[1], False
+            if local_context != "San Juan, Argentina":
+                coords_fallback = resolve_geocode(f"{query}, San Juan, Argentina", False)
+                if coords_fallback:
+                    return coords_fallback[0], coords_fallback[1], False
 
     for pattern in linear_precise_patterns:
         match = re.search(pattern, text_clean)
@@ -420,6 +448,10 @@ def geocoding_funnel(text):
             coords = resolve_geocode(f"{query}, {local_context}", False)
             if coords:
                 return coords[0], coords[1], False
+            if local_context != "San Juan, Argentina":
+                coords_fallback = resolve_geocode(f"{query}, San Juan, Argentina", False)
+                if coords_fallback:
+                    return coords_fallback[0], coords_fallback[1], False
 
     for pattern in approximate_patterns:
         match = re.search(pattern, text_clean)
@@ -467,6 +499,24 @@ def clean_html(text):
     # Colapsar espacios y saltos de línea adicionales
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
+
+def fetch_article_text(url):
+    """Descarga el cuerpo de la noticia y extrae el texto de las etiquetas de párrafo"""
+    try:
+        print(f"[DEEP FETCH] Buscando detalles en la URL: {url}")
+        response = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+        if response.status_code == 200:
+            html_content = response.text
+            p_matches = re.findall(r'<p[^>]*>(.*?)</p>', html_content, re.DOTALL)
+            paragraphs = []
+            for p in p_matches:
+                p_clean = clean_html(p)
+                if len(p_clean) > 30 and not any(x in p_clean.lower() for x in ["copyright", "todos los derechos", "comercial:", "términos y condiciones"]):
+                    paragraphs.append(p_clean)
+            return "\n".join(paragraphs)
+    except Exception as e:
+        print(f"[WARNING] No se pudo obtener el cuerpo del artículo desde {url}: {e}")
+    return ""
 
 def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
     title = clean_html(title)
@@ -534,8 +584,6 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
     mentions_local = any(loc.lower() in text_to_search for loc in LOCALIDADES) or any(dept.lower() in text_to_search for dept in DEPARTAMENTOS)
     if mentions_other_province and not mentions_local:
         return None
-    if not detected_category:
-        return None
     res = geocoding_funnel(title)
     if res and not res[2]:
         lat, lon, is_approx = res
@@ -544,7 +592,49 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan"):
         if full_res:
             lat, lon, is_approx = full_res
         else:
-            return None
+            lat, lon, is_approx = None, None, True
+
+    if (is_approx or lat is None) and link and link.startswith("http"):
+        body_text = fetch_article_text(link)
+        if body_text:
+            text_to_search += " " + body_text.lower()
+            deep_res = geocoding_funnel(body_text)
+            if deep_res:
+                d_lat, d_lon, d_is_approx = deep_res
+                if not d_is_approx or (lat is None):
+                    lat, lon, is_approx = d_lat, d_lon, d_is_approx
+
+    if not detected_category:
+        if any(word in text_to_search for word in CONTEXT_WIND):
+            for slug, keywords in WIND_MAPPING.items():
+                if any(kw in text_to_search for kw in keywords):
+                    detected_category = slug
+                    break
+        if not detected_category and any(word in text_to_search for word in CONTEXT_FIRE):
+            is_firearm = "arma de fuego" in text_to_search or "armas de fuego" in text_to_search or "disparó" in text_to_search
+            is_animal = "llamas" in text_to_search and any(a in text_to_search for a in ["animal", "aves", "guanaco", "fauna", "especie", "ejemplar"])
+            if not (is_firearm or is_animal):
+                detected_category = "incendio"
+                for slug, FIRE_MAPPING_kw in FIRE_MAPPING.items():
+                    if any(kw in text_to_search for kw in FIRE_MAPPING_kw):
+                        detected_category = slug
+                        break
+        if not detected_category and any(word in text_to_search for word in CONTEXT_ACCIDENT):
+            for slug, keywords in ACCIDENT_MAPPING.items():
+                if any(kw in text_to_search for kw in keywords):
+                    if slug == "vuelco":
+                        vuelco_context = ["auto", "automóvil", "automovil", "vehículo", "vehiculo", "coche", "camión", "camion", "camioneta", "colectivo", "micro", "ómnibus", "omnibus", "bus", "moto", "motocicleta", "motociclista", "ciclomotor", "rodado", "ciclista", "bicicleta", "bici", "peatón", "peatona", "transeúnte", "transeunte", "utilitario", "furgón", "furgon", "trafic", "ambulancia", "patrullero", "ruta", "calle", "avenida", "av.", "autopista", "carretera", "asfalto", "calzada", "banquina", "zanja", "cuneta", "bache", "semáforo", "semaforo", "esquina", "conductor", "conductores", "pasajero", "pasajeros", "volcadura", "tránsito", "transito", "vial"]
+                        false_positives = ["vuelco inesperado", "vuelco en la causa", "vuelco en la investigacion", "vuelco en la investigación", "vuelco en el caso", "giro inesperado", "cayó detenido", "cayo detenido", "cayó preso", "cayo preso", "cayó la banda", "cayo la banda", "cayó una banda", "cayo una banda", "cayó por el robo", "cayo por el robo", "cayó por robo", "cayo por robo", "cayó por robar", "cayo por robar", "cayó in fraganti", "cayo in fraganti", "cayó con las manos", "cayo con las manos", "cayó tras", "cayo tras", "cayó acusado", "cayo acusado", "caída de granizo", "caida de granizo", "caída del cabello", "caida del cabello", "caída de las ventas", "caida de las ventas", "caída del consumo", "caida del consumo"]
+                        if any(fp in text_to_search for fp in false_positives):
+                            continue
+                        if not any(ctx in text_to_search for ctx in vuelco_context):
+                            continue
+                    detected_category = slug
+                    break
+
+    if not detected_category or lat is None:
+        return None
+
     is_fatal = any(kw in text_to_search for kw in FATAL_KEYWORDS)
     event_date = datetime.now()
     if "ayer" in text_to_search or "anoche" in text_to_search:
@@ -596,6 +686,9 @@ def scrape_html():
                         parsed_uri = urlparse(source['url'])
                         domain = '{uri.scheme}://{uri.netloc}'.format(uri=parsed_uri)
                         link = domain + link
+                    if link and is_url_processed(link):
+                        print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
+                        continue
                     incident = analyze_news(title, desc, link, source['medio'])
                     if incident:
                         send_to_api(incident)
@@ -618,6 +711,9 @@ def scrape_rss():
                     title = html.unescape(title_tag.text if title_tag is not None and title_tag.text else '')
                     desc = html.unescape(desc_tag.text if desc_tag is not None and desc_tag.text else '')
                     link = item.find('link').text if item.find('link') is not None else ''
+                    if link and is_url_processed(link):
+                        print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
+                        continue
                     if title:
                         incident = analyze_news(title, desc, link, fuente_nombre)
                         if incident:
