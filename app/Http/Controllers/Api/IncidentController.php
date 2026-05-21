@@ -43,6 +43,35 @@ class IncidentController extends Controller
         return response()->json($incidents);
     }
 
+    public function getSummary(Request $request)
+    {
+        $todayIncidents = Incident::whereDate('event_date', today())->get();
+        $yesterdayIncidents = Incident::whereDate('event_date', today()->subDay())->get();
+
+        return response()->json([
+            'today' => [
+                'count' => $todayIncidents->count(),
+                'fatal' => $todayIncidents->where('is_fatal', true)->count(),
+            ],
+            'yesterday' => [
+                'count' => $yesterdayIncidents->count(),
+                'fatal' => $yesterdayIncidents->where('is_fatal', true)->count(),
+            ]
+        ]);
+    }
+
+    public function getNotifications(Request $request)
+    {
+        $notifications = \Illuminate\Support\Facades\DB::table('incident_notifications')
+            ->join('incidents', 'incident_notifications.incident_id', '=', 'incidents.id')
+            ->select('incident_notifications.*', 'incidents.title', 'incidents.source_url', 'incidents.source_name')
+            ->whereDate('incident_notifications.created_at', today())
+            ->orderBy('incident_notifications.created_at', 'desc')
+            ->get();
+
+        return response()->json($notifications);
+    }
+
     private function normalizeText(string $text): string
     {
         $text = mb_strtolower($text, 'UTF-8');
@@ -242,6 +271,7 @@ class IncidentController extends Controller
             'fuente_url'   => 'nullable|url',
             'verificado'   => 'nullable|boolean',
             'event_date'   => 'nullable|date',
+            'source_publish_date' => 'nullable|date',
         ]);
 
         // Buscar o crear la categoría según la etiqueta
@@ -367,19 +397,32 @@ class IncidentController extends Controller
                 ->contains(fn($word) => str_contains(strtolower($validated['etiqueta']), $word));
 
             if ($isAccident) {
-                // Buscamos un incidente en un radio de ~500m (0.005 grados) en los últimos 15 días
+                // Buscamos un incidente en un radio de ~1km (0.01 grados) en los últimos 15 días
                 // que sea de la misma zona pero que NO sea fatal todavía.
                 $similarIncident = Incident::where('is_fatal', '!=', 1)
                     ->where('event_date', '>=', now()->subDays(15))
-                    ->whereBetween('latitude', [$validated['latitud'] - 0.005, $validated['latitud'] + 0.005])
-                    ->whereBetween('longitude', [$validated['longitud'] - 0.005, $validated['longitud'] + 0.005])
+                    ->whereBetween('latitude', [$validated['latitud'] - 0.01, $validated['latitud'] + 0.01])
+                    ->whereBetween('longitude', [$validated['longitud'] - 0.01, $validated['longitud'] + 0.01])
                     ->first();
 
                 if ($similarIncident) {
                     $similarIncident->update([
                         'is_fatal' => true,
-                        'description' => $similarIncident->description . "\n\n[ACTUALIZACIÓN FATAL]: " . $validated['titulo'] . " (Fuente: " . ($validated['fuente_url'] ?? 'N/A') . ")"
+                        'description' => $similarIncident->description . "\n\n[ACTUALIZACIÓN FATAL]: " . $validated['titulo'] . " (Fuente: " . ($validated['fuente_url'] ?? 'N/A') . ")",
+                        'source_publish_date' => $validated['source_publish_date'] ?? now(),
+                        'updated_at' => now(),
                     ]);
+
+                    // Check if event was yesterday or older
+                    $eventDateObj = \Carbon\Carbon::parse($similarIncident->event_date);
+                    if ($eventDateObj->isBefore(today())) {
+                        \Illuminate\Support\Facades\DB::table('incident_notifications')->insert([
+                            'incident_id' => $similarIncident->id,
+                            'type' => 'fatal_yesterday',
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
+                    }
 
                     return response()->json([
                         'message' => 'Incidente previo actualizado a estado FATAL',
@@ -449,6 +492,16 @@ class IncidentController extends Controller
             // Si el nuevo es fatal y el existente no, actualizarlo
             if (($validated['is_fatal'] ?? false) && !$fuzzyDuplicate->is_fatal) {
                 $updateData['is_fatal'] = true;
+                
+                // Si el evento ocurrió ayer o antes, generar notificación
+                if ($existingEventDate->isBefore(today())) {
+                    \Illuminate\Support\Facades\DB::table('incident_notifications')->insert([
+                        'incident_id' => $fuzzyDuplicate->id,
+                        'type' => 'fatal_yesterday',
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+                }
             }
 
             // Enriquecimiento de descripción: Concatenar detalles sin duplicar
@@ -496,7 +549,19 @@ class IncidentController extends Controller
             'has_bus'        => $vehicles['has_bus'],
             'has_pedestrian' => $vehicles['has_pedestrian'],
             'has_bicycle'    => $vehicles['has_bicycle'],
+            'source_publish_date' => $validated['source_publish_date'] ?? now(),
+            'reported_at'    => now(),
         ]);
+
+        // Create notification if the new incident is fatal and from a past date
+        if ($incident->is_fatal && \Carbon\Carbon::parse($incident->event_date)->isBefore(today())) {
+            \Illuminate\Support\Facades\DB::table('incident_notifications')->insert([
+                'incident_id' => $incident->id,
+                'type' => 'fatal_yesterday',
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        }
 
         return response()->json([
             'message' => 'Incidente registrado correctamente',

@@ -6,6 +6,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { es } from 'date-fns/locale/es';
 import L from 'leaflet';
 import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw } from 'lucide-react';
+import IncidentsSummaryModal from './IncidentsSummaryModal';
 
 // Fix for default Leaflet icons in React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -571,6 +572,13 @@ const MapComponent = () => {
                     onClick={() => setSidebarOpen(false)}
                 />
             )}
+
+            {/* Modal de Resumen y Notificaciones (Inferior Izquierda) */}
+            <IncidentsSummaryModal onFocusIncident={(incident) => {
+                if (incident.latitude && incident.longitude) {
+                    setSelectedIncident(incident);
+                }
+            }} />
 
             {/* Modal Premium e Información */}
             {premiumModalOpen && (

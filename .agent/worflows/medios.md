@@ -15,6 +15,7 @@ El sistema utiliza un agente de usuario (User-Agent) que simula un navegador rea
 | **Telesol Diario** | RSS | `https://www.telesoldiario.com/rss` | Completo |
 | **Canal 4 San Juan** | RSS | `https://canal4sanjuan.com.ar/feed/` | Completo |
 | **Nuevo Mundo** | RSS | `category/policiales/feed/` | Especializado |
+| **Nuevo Diario** | RSS | `https://www.nuevodiariosanjuan.com.ar/feed` | Genérico |
 | **La Provincia SJ** | RSS | `https://www.diariolaprovinciasj.com/rss` | Genérico |
 | **San Juan 8** | RSS | `https://www.sanjuan8.com/rss` | Genérico |
 | **Diario Móvil** | HTML | `/categoria/4/san-juan` | Scraping Directo |

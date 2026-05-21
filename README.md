@@ -115,6 +115,16 @@ php artisan serve
     npm run test:sources
     ```
 
+### ⚙️ Configuración Dinámica de Fuentes (JSON + Base de Datos)
+El sistema permite agregar, editar o desactivar medios de noticias (fuentes) sin necesidad de tocar código Python.
+Toda la configuración vive en `scrapers/config/scraper_rules.json` y puede sobrescribirse dinámicamente mediante la tabla `scraper_rules` de SQLite.
+Para agregar un nuevo medio:
+1. Edita el archivo `scraper_rules.json` definiendo su `scrape_urls` y selectores (ver documentación en `docs/rules_schema.md`).
+2. Para publicar estos cambios en la Base de Datos, ejecuta:
+   ```bash
+   python scrapers/migrate_rules.py
+   ```
+
 ---
 
 ## 🤖 Automatización en Windows en Segundo Plano
@@ -136,3 +146,7 @@ Si estás en tu entorno de producción o desarrollo diario en Windows, puedes pr
 *   `database/seeders/LocationSeeder.php` — Semillas geográficas oficiales (Departamentos y Localidades de San Juan).
 *   `scrapers/rss_scraper.py` — Algoritmo inteligente de ingesta, filtrado categórico por palabras clave y geolocalización jerárquica.
 *   `resources/js/components/MapComponent.jsx` — Componente interactivo del mapa (Leaflet), filtros de incidentes y conteos premium.
+
+php artisan migrate:fresh --seed
+python scrapers/migrate_rules.py
+npm run start

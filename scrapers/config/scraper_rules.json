@@ -1,0 +1,73 @@
+{
+  "sources": {
+    "diariodecuyo.com.ar": {
+      "type": "rss",
+      "scrape_urls": [
+        "https://diariodecuyo.com.ar/rss/pages/policiales.xml",
+        "https://diariodecuyo.com.ar/rss/pages/san-juan.xml"
+      ],
+      "sanitize_exclusions": ["Hospital Rawson"]
+    },
+    "tiempodesanjuan.com": {
+      "type": "rss",
+      "scrape_urls": [
+        "https://www.tiempodesanjuan.com/rss/pages/Policiales.xml",
+        "https://www.tiempodesanjuan.com/rss/pages/home.xml"
+      ],
+      "sanitize_exclusions": ["Hospital Rawson"]
+    },
+    "diariohuarpe.com": {
+      "type": "rss",
+      "scrape_urls": [
+        "https://www.diariohuarpe.com/rss/policiales.xml",
+        "https://www.diariohuarpe.com/rss/portada.xml"
+      ]
+    },
+    "nuevodiariosanjuan.com.ar": {
+      "type": "rss",
+      "scrape_urls": ["https://www.nuevodiariosanjuan.com.ar/feed"]
+    },
+    "diariolaprovinciasj.com": {
+      "type": "rss",
+      "scrape_urls": ["https://www.diariolaprovinciasj.com/rss"]
+    },
+    "canal4sanjuan.com.ar": {
+      "type": "rss",
+      "scrape_urls": ["https://canal4sanjuan.com.ar/feed/"]
+    },
+    "canal13sanjuan.com": {
+      "type": "rss",
+      "scrape_urls": ["https://www.canal13sanjuan.com/rss"]
+    },
+    "nuevomundosj.com.ar": {
+      "type": "rss",
+      "scrape_urls": ["https://nuevomundosj.com.ar/category/policiales/feed/"]
+    },
+    "telesoldiario.com": {
+      "type": "rss",
+      "scrape_urls": ["https://www.telesoldiario.com/rss"]
+    },
+    "diariomovil.info": {
+      "type": "html",
+      "scrape_urls": ["https://diariomovil.info/categoria/4/san-juan"],
+      "article_selector": "<div[^>]*class=\"[^\"]*post[^\"]*\"[^>]*>.*?<a[^>]*href=\"([^\"]+)\"[^>]*>.*?<h[23][^>]*class=\"[^\"]*titulo[^\"]*\"[^>]*>(.*?)</h[23]>.*?<div[^>]*class=\"[^\"]*resumen[^\"]*\"[^>]*>(.*?)</div>",
+      "sanitize_exclusions": ["Hospital Rawson"]
+    },
+    "0264noticias.com.ar": {
+      "type": "html",
+      "scrape_urls": ["https://www.0264noticias.com.ar/policiales"],
+      "article_selector": "<a[^>]*class=\"[^\"]*w-full[^\"]*\"[^>]*href=\"(/noticias/[^\"]+)\"[^>]*>(?:\\s*<h3[^>]*>.*?</h3>)?\\s*<h2[^>]*>(.*?)</h2>\\s*</a>",
+      "sanitize_exclusions": ["Hospital Rawson"]
+    },
+    "sanjuan8.com": {
+      "type": "rss",
+      "scrape_urls": ["https://www.sanjuan8.com/rss"],
+      "sanitize_exclusions": ["Hospital Rawson"]
+    }
+  },
+  "global": {
+    "fallback_context": "San Juan, Argentina",
+    "duplicate_check": true,
+    "deep_fetch": true
+  }
+}
