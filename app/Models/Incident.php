@@ -27,6 +27,7 @@ class Incident extends Model
         'province_id',
         'road_type',
         'road_name',
+        'victim_names',
         'has_car',
         'has_pickup',
         'has_utility',

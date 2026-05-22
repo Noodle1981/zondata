@@ -453,17 +453,37 @@ class IncidentController extends Controller
         // ---------------------------------------------------------
 
         // --- Lógica de Duplicados Cercanos (Fuzzy) y Fusión Inteligente ---
-        // Buscamos si ya hay un incidente de la misma categoría en un radio de ~1km
-        // dentro de una ventana temporal de ±2 días (preservación cronológica).
+        // Buscamos si ya hay un incidente de la misma categoría en un radio de ~1.5km
+        // o si comparten nombres propios únicos (ej: nombres de víctimas) en una ventana de ±2 días.
         $eventDate = \Carbon\Carbon::parse($validated['event_date'] ?? now());
-        $fuzzyDuplicate = Incident::where('category_id', $category->id)
+        $candidates = Incident::where('category_id', $category->id)
             ->whereBetween('event_date', [
                 $eventDate->copy()->subDays(2),
                 $eventDate->copy()->addDays(2)
             ])
-            ->whereBetween('latitude', [$validated['latitud'] - 0.01, $validated['latitud'] + 0.01])
-            ->whereBetween('longitude', [$validated['longitud'] - 0.01, $validated['longitud'] + 0.01])
-            ->first();
+            ->get();
+
+        // Extraer nombres de víctimas del nuevo reporte para comparar y persistir
+        $newExtracted = $this->extractProperNouns(($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? ''));
+        $victimNames = !empty($newExtracted['full_names']) ? implode(', ', $newExtracted['full_names']) : null;
+
+        $fuzzyDuplicate = null;
+        foreach ($candidates as $candidate) {
+            // 1. Verificar cercanía por coordenadas (~1.5km en grados de latitud/longitud)
+            $latDiff = abs($candidate->latitude - $validated['latitud']);
+            $lngDiff = abs($candidate->longitude - $validated['longitud']);
+            $isClose = ($latDiff <= 0.015 && $lngDiff <= 0.015);
+
+            // 2. Verificar si comparten nombres propios específicos (víctimas/detalles únicos)
+            $text1 = ($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? '');
+            $text2 = ($candidate->title ?? '') . ' ' . ($candidate->description ?? '');
+            $sharesProperNoun = $this->shareUniqueProperNoun($text1, $text2);
+
+            if ($isClose || $sharesProperNoun) {
+                $fuzzyDuplicate = $candidate;
+                break;
+            }
+        }
 
         if ($fuzzyDuplicate) {
             $existingHasLocality = !empty($fuzzyDuplicate->locality_id);
@@ -516,6 +536,47 @@ class IncidentController extends Controller
                     $updateData[$field] = true;
                 }
             }
+
+            // Fusión inteligente de nombres de víctimas
+            $existingNames = array_map('trim', explode(',', $fuzzyDuplicate->victim_names ?? ''));
+            $existingNames = array_filter($existingNames); // remover vacíos
+            
+            $newNames = $newExtracted['full_names'] ?? [];
+
+            $mergedNames = $existingNames;
+            foreach ($newNames as $newName) {
+                $alreadyExists = false;
+                $newNameLower = mb_strtolower($newName, 'UTF-8');
+                
+                foreach ($mergedNames as $key => $existingName) {
+                    $existingNameLower = mb_strtolower($existingName, 'UTF-8');
+                    
+                    if ($existingNameLower === $newNameLower) {
+                        $alreadyExists = true;
+                        break;
+                    }
+                    
+                    // Si el nombre existente es una versión más corta (ej: "Melani")
+                    // y el nuevo es más completo (ej: "Melani Desseff"), actualizarlo
+                    if (str_contains($newNameLower, $existingNameLower)) {
+                        $mergedNames[$key] = $newName; 
+                        $alreadyExists = true;
+                        break;
+                    }
+                    
+                    // Si el nuevo nombre es más corto (ej: "Melani") y el existente es completo ("Melani Desseff")
+                    if (str_contains($existingNameLower, $newNameLower)) {
+                        $alreadyExists = true; 
+                        break;
+                    }
+                }
+                
+                if (!$alreadyExists) {
+                    $mergedNames[] = $newName;
+                }
+            }
+            
+            $updateData['victim_names'] = !empty($mergedNames) ? implode(', ', array_unique($mergedNames)) : null;
 
             // Preservación Cronológica: Conservar la fecha más antigua (real del suceso)
             $existingEventDate = \Carbon\Carbon::parse($fuzzyDuplicate->event_date);
@@ -577,6 +638,7 @@ class IncidentController extends Controller
             'province_id'    => $provinceId,
             'road_type'      => $roadType,
             'road_name'      => $roadName,
+            'victim_names'   => $victimNames,
             'has_car'        => $vehicles['has_car'],
             'has_pickup'     => $vehicles['has_pickup'],
             'has_utility'    => $vehicles['has_utility'],
@@ -604,4 +666,118 @@ class IncidentController extends Controller
             'incident' => $incident
         ], 201);
     }
+
+    /**
+     * Extrae nombres propios de personas (nombres completos y palabras singulares) de un texto,
+     * eliminando referencias a calles/avenidas y filtrando una lista negra exhaustiva.
+     */
+    private function extractProperNouns(string $text): array
+    {
+        $blacklist = [
+            'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'este', 'esta', 'estos', 'estas',
+            'ese', 'esa', 'esos', 'esas', 'aquel', 'aquella', 'con', 'sin', 'por', 'para', 'como',
+            'cuando', 'donde', 'quien', 'cual', 'cuyo', 'pero', 'mas', 'sino', 'aunque', 'porque',
+            'desde', 'hasta', 'entre', 'sobre', 'tras', 'durante', 'segun', 'contra', 'hacia',
+            'policia', 'justicia', 'hospital', 'rawson', 'sanjuan', 'argentina', 'ufi',
+            'fiscal', 'fiscalia', 'comisaria', 'medicos', 'doctor', 'enfermera', 'enfermero',
+            'joven', 'hombre', 'mujer', 'chico', 'chica', 'menor', 'abuelo', 'abuela',
+            'mañana', 'tarde', 'noche', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes',
+            'sabado', 'domingo', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+            'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+            'capital', 'rawson', 'rivadavia', 'chimbas', 'santa', 'lucia', 'pocito',
+            'caucete', 'jachal', 'albardon', 'sarmiento', 'angaco', 'iglesia', 'calinga',
+            'valle', 'fertil', 'ullum', 'zonda', 'avenida', 'calle', 'ruta', 'esquina',
+            'barrio', 'villa', 'paraje', 'interseccion', 'choque', 'vuelco', 'colision',
+            'fuente', 'diario', 'prensa', 'noticias', 'telesol', 'sanjuan8', 'huarpe', 'cuyo',
+            'personal', 'efectivos', 'personal policial', 'policial', 'ambulancia', 'salud',
+            'urgencias', 'terapia', 'intensiva', 'sanatorio', 'clinica', 'chofer', 'conductor',
+            'pasajero', 'acompañante', 'peaton', 'motociclista', 'ciclista', 'camionero',
+            'detenido', 'aprehendido', 'imputado', 'comisario', 'principal', 'oficial',
+            'juez', 'ayudante', 'delitos', 'especiales', 'transito', 'gendarmeria', 'bomberos',
+            'patrullero', 'vehiculo', 'motocicleta', 'automovil', 'camioneta', 'colectivo'
+        ];
+
+        // 1. Limpieza de calles y rutas para evitar falsos positivos
+        // Limpiar "calle/avenida/av/ruta..." seguido de nombres propios
+        $cleanText = preg_replace('/\b(calle|calles|avenida|avenidas|av\.?|ruta|bulevar|pasaje|esquina|intersección|cruce|calle lateral)\s+([A-Z][a-zA-ZáéíóúÁÉÍÓÚñÑ0-9]+(?:\s+(?:de\s+la|de|del|y|e|o)\s+[A-Z][a-zA-ZáéíóúÁÉÍÓÚñÑ]+)?)/iu', '', $text);
+        
+        // Limpiar "ruta [0-9]+"
+        $cleanText = preg_replace('/\bruta\s+\d+/iu', '', $cleanText);
+
+        // 2. Extraer parejas consecutivas de palabras capitalizadas (Nombres Completos: "Melani Desseff")
+        preg_match_all('/\b([A-Z][a-záéíóúÁÉÍÓÚñÑ]+)\s+([A-Z][a-záéíóúÁÉÍÓÚñÑ]+)\b/u', $cleanText, $pairs);
+        
+        $fullNames = [];
+        if (!empty($pairs[0])) {
+            foreach ($pairs[0] as $match) {
+                $words = explode(' ', $match);
+                $w1Lower = mb_strtolower($words[0], 'UTF-8');
+                $w2Lower = mb_strtolower($words[1], 'UTF-8');
+                
+                // Exigir que ninguno esté en la lista negra y que tengan longitud suficiente
+                if (!in_array($w1Lower, $blacklist) && !in_array($w2Lower, $blacklist)) {
+                    if (mb_strlen($words[0]) >= 3 && mb_strlen($words[1]) >= 3) {
+                        $fullNames[] = trim($match);
+                    }
+                }
+            }
+        }
+
+        // 3. Extraer palabras capitalizadas individuales altamente singulares
+        // (excluyendo el inicio de oraciones para evitar falsas capitalizaciones)
+        preg_match_all('/(?<!\.\s)(?<!\A)\b([A-Z][a-záéíóúÁÉÍÓÚñÑ]+)\b/u', $cleanText, $singles);
+        
+        $singleNames = [];
+        if (!empty($singles[1])) {
+            foreach ($singles[1] as $w) {
+                $wLower = mb_strtolower($w, 'UTF-8');
+                if (!in_array($wLower, $blacklist) && mb_strlen($wLower) >= 4) {
+                    $singleNames[] = $w;
+                }
+            }
+        }
+
+        return [
+            'full_names' => array_values(array_unique($fullNames)),
+            'single_names' => array_values(array_unique($singleNames))
+        ];
+    }
+
+    /**
+     * Compara dos textos y determina si comparten nombres propios específicos (víctimas/accidentados)
+     * ignorando calles y palabras comunes de la lista negra.
+     */
+    private function shareUniqueProperNoun(string $text1, string $text2): bool
+    {
+        $res1 = $this->extractProperNouns($text1);
+        $res2 = $this->extractProperNouns($text2);
+
+        // 1. Comparar nombres completos (Coincidencia exacta de Nombre y Apellido)
+        // Ej: "Melani Desseff" en ambos textos
+        foreach ($res1['full_names'] as $name1) {
+            $n1Lower = mb_strtolower($name1, 'UTF-8');
+            foreach ($res2['full_names'] as $name2) {
+                $n2Lower = mb_strtolower($name2, 'UTF-8');
+                if ($n1Lower === $n2Lower) {
+                    return true;
+                }
+            }
+        }
+
+        // 2. Comparar apellidos/nombres individuales altamente singulares
+        // Si comparten un apellido muy raro y característico, ej: "Desseff" o "Deseff"
+        foreach ($res1['single_names'] as $s1) {
+            $s1Lower = mb_strtolower($s1, 'UTF-8');
+            foreach ($res2['single_names'] as $s2) {
+                $s2Lower = mb_strtolower($s2, 'UTF-8');
+                
+                if ($s1Lower === $s2Lower) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }
+

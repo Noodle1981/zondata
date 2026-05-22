@@ -607,6 +607,14 @@ const MapComponent = () => {
                                         {renderPrecisionBadge(incident)}
                                     </div>
                                     <h3 className="font-bold text-sm mb-1">{incident.title}</h3>
+                                    {incident.victim_names && (
+                                        <div className="flex items-center gap-1.5 my-2 px-2 py-1 bg-red-50 border border-red-100 rounded text-[11px] font-semibold text-red-700">
+                                            <svg className="w-3.5 h-3.5 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                            </svg>
+                                            <span>Involucrado/s: <strong className="text-red-900">{incident.victim_names}</strong></span>
+                                        </div>
+                                    )}
                                     {incident.description && <p className="text-xs text-gray-600 mb-2">{incident.description}</p>}
                                     <div className="text-[10px] border-t pt-2 mt-2">
                                         Visto en: <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-blue-500 font-medium">{incident.source_name}</a>
