@@ -13,5 +13,10 @@
 2. **Geocodificación (Funnel de Precisión de 2 Niveles):**
    - **Nivel 1 (SQLite Cache):** Si la dirección de la calle y localidad exacta ya está en `geocoding_cache`, recupera las coordenadas instantáneamente (costo $0, latencia cero).
    - **Nivel 2 (Google Geocoding API):** Si es nueva, se geocodifica directamente mediante Google Maps API con restricciones estrictas de región (`region: ar`) y componentes (`administrative_area: San Juan | country: AR`) para garantizar precisión máxima. Se registra la precisión del tipo (`ROOFTOP`, `RANGE_INTERPOLATED`, `GEOMETRIC_CENTER`, `APPROXIMATE`) y el origen (`google`).
-3. **Validación:** El sistema inyecta el evento en la API de Laravel (`/api/incidents`) con sus metadatos de precisión de geocodificación.
-4. **Visualización:** React renderiza los eventos activos en el mapa provincial. Los incidentes muestran badges interactivos con el origen de sus coordenadas y el nivel de precisión técnica de Google.
+3. **Extracción & Deduplicación por Nombres Propios (Fusión Inteligente):**
+   - *Limpieza de Calles*: Se remueven referencias viales (e.g. "calle Morón", "Avenida Ignacio de la Roza") para evitar que los nombres de calles actúen como falsos positivos de deduplicación.
+   - *Extracción de Nombres*: Un extractor heurístico local en Laravel extrae nombres de personas involucradas/víctimas del texto (e.g. `Firstname Lastname`).
+   - *Fusión por Ventana Temporal (±2 días)*: Si dos noticias comparten un nombre de víctima único dentro de este rango de tiempo, se consideran el mismo incidente.
+   - *Auto-Corrección de Ubicación*: Al fusionar, el incidente consolida descripciones y adopta automáticamente las coordenadas del reporte con mayor nivel de precisión de geocodificación (`ROOFTOP` > `RANGE_INTERPOLATED` > `GEOMETRIC_CENTER` > `APPROXIMATE`), resolviendo discrepancias o errores periodísticos locales.
+   - *Persistencia*: Se consolidan los nombres sin duplicaciones en la columna `victim_names` de la tabla `incidents`.
+4. **Visualización:** React renderiza los eventos activos en el mapa provincial. Los incidentes muestran badges interactivos con el origen de sus coordenadas, el nivel de precisión de Google, y un badge destacado en color carmín/rosa que lista los involucrados/víctimas con un icono de perfil de usuario.
