@@ -5,7 +5,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { es } from 'date-fns/locale/es';
 import L from 'leaflet';
-import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw } from 'lucide-react';
+import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw, MapPin, AlertCircle } from 'lucide-react';
 import IncidentsSummaryModal from './IncidentsSummaryModal';
 
 // Fix for default Leaflet icons in React
@@ -86,6 +86,39 @@ const MapFocus = ({ incident }) => {
     return null;
 };
 
+// Helper function to render styled, premium geocoding precision badges
+const renderPrecisionBadge = (incident) => {
+    const locType = incident.location_type || 'GEOMETRIC_CENTER';
+    const source = incident.source || 'nominatim';
+    
+    if (locType === 'ROOFTOP') {
+        return (
+            <span className="flex items-center gap-1 text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50 shadow-sm shadow-emerald-500/5" title="Ubicación exacta del domicilio o edificio">
+                <MapPin size={10} className="stroke-[3px]" /> Dirección Exacta
+            </span>
+        );
+    } else if (locType === 'RANGE_INTERPOLATED') {
+        return (
+            <span className="flex items-center gap-1 text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50 shadow-sm shadow-emerald-500/5" title="Calle y altura aproximada en la cuadra">
+                <MapPin size={10} className="stroke-[3px]" /> Calle Precisa
+            </span>
+        );
+    } else if (locType === 'GEOMETRIC_CENTER' && source !== 'fallback') {
+        return (
+            <span className="flex items-center gap-1 text-[10px] font-extrabold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/50 shadow-sm shadow-amber-500/5" title="Ubicación a nivel de calle, barrio o intersección">
+                <AlertTriangle size={10} className="stroke-[2.5px]" /> Ubicación Aproximada
+            </span>
+        );
+    } else {
+        // APPROXIMATE or fallback
+        return (
+            <span className="flex items-center gap-1 text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60 shadow-sm" title="Ubicación referencial de la localidad o provincia (sin dirección precisa)">
+                <AlertCircle size={10} className="stroke-[2.5px]" /> Ubicación Referencial
+            </span>
+        );
+    }
+};
+
 const MapComponent = () => {
     const [incidents, setIncidents] = useState([]);
     // Abrir por defecto en escritorio, cerrado en móvil
@@ -109,6 +142,8 @@ const MapComponent = () => {
     const [lastSync, setLastSync] = useState(null);       
     const [selectedIncident, setSelectedIncident] = useState(null);
     const [, setTick] = useState(0);                      // forces re-render every minute for relative time
+    const [isProcessingNew, setIsProcessingNew] = useState(false);
+    const prevIncidentsCountRef = useRef(0);
     const [premiumModalOpen, setPremiumModalOpen] = useState(false);
     const [modalView, setModalView] = useState('pricing'); // 'pricing' or 'dashboard'
     const [activeDashboardSection, setActiveDashboardSection] = useState('general'); // 'general', 'traffic', 'fire', 'wind'
@@ -154,11 +189,12 @@ const MapComponent = () => {
     const position = [-30.8654, -68.8895];
 
     const fetchIncidents = () => {
-        setLoading(true);
+        // Show loading only on first load (if incidents list is empty)
+        if (incidents.length === 0) setLoading(true);
         setPremiumError(false);
         const startTime = Date.now();
-        const minDelay = 1000; // Mínimo de 1 segundo para feedback visual premium
-        
+        const minDelay = 1000; // minimal visual feedback on first load
+
         fetch(`/api/incidents?date=${selectedDate}`)
             .then(res => {
                 if (res.status === 402) {
@@ -169,20 +205,33 @@ const MapComponent = () => {
             })
             .then(data => {
                 const items = data?.data ?? data;
-                const elapsed = Date.now() - startTime;
-                const remaining = Math.max(0, minDelay - elapsed);
-                
-                setTimeout(() => {
-                    setIncidents(Array.isArray(items) ? items : []);
-                    setLastSync(new Date()); 
-                    setLoading(false);
-                }, remaining);
+                const newList = Array.isArray(items) ? items : [];
+                const previous = prevIncidentsCountRef.current || 0;
+
+                if (newList.length > previous) {
+                    // New incident(s) detected – show processing state
+                    setIsProcessingNew(true);
+                    setTimeout(() => {
+                        setIncidents(newList);
+                        prevIncidentsCountRef.current = newList.length;
+                        setLastSync(new Date());
+                        setIsProcessingNew(false);
+                        setLoading(false);
+                    }, 3000);
+                } else {
+                    // No new incidents – just refresh sync time
+                    const elapsed = Date.now() - startTime;
+                    const remaining = Math.max(0, minDelay - elapsed);
+                    setTimeout(() => {
+                        setLastSync(new Date());
+                        setLoading(false);
+                    }, remaining);
+                }
             })
             .catch(err => {
                 console.error("Error fetching incidents:", err);
                 const elapsed = Date.now() - startTime;
                 const remaining = Math.max(0, minDelay - elapsed);
-                
                 setTimeout(() => {
                     if (!premiumError) setIncidents([]);
                     setLoading(false);
@@ -191,8 +240,12 @@ const MapComponent = () => {
     };
 
     useEffect(() => {
+        // Reset counter on date change
+        prevIncidentsCountRef.current = incidents.length;
+        // Initial load (visible loading if list empty)
         fetchIncidents();
-        const interval = setInterval(fetchIncidents, 30000); // 30 segundos
+        // Poll every 30 minutes (1800000 ms) silently – UI only updates when new incident detected
+        const interval = setInterval(fetchIncidents, 1800000);
         return () => clearInterval(interval);
     }, [selectedDate]);
 
@@ -369,39 +422,45 @@ const MapComponent = () => {
                                 <div className="flex items-center gap-2.5 min-w-0">
                                     {/* Punto de estado con anillo */}
                                     <span className="relative flex-shrink-0 w-4 h-4">
-                                        {(loading || incidents.length > 0) && (
+                                        {(isProcessingNew || loading || incidents.length > 0) && (
                                             <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 animate-ping ${
-                                                loading ? 'bg-amber-400' : 'bg-emerald-500'
+                                                isProcessingNew ? 'bg-blue-400' : loading ? 'bg-amber-400' : 'bg-emerald-500'
                                             }`} />
                                         )}
                                         <span className={`relative inline-flex w-4 h-4 rounded-full ${
-                                            loading
-                                                ? 'bg-amber-400'
-                                                : incidents.length > 0
-                                                    ? 'bg-emerald-500'
-                                                    : 'bg-slate-400'
+                                            isProcessingNew
+                                                ? 'bg-blue-500'
+                                                : loading
+                                                    ? 'bg-amber-400'
+                                                    : incidents.length > 0
+                                                        ? 'bg-emerald-500'
+                                                        : 'bg-slate-400'
                                         }`} />
                                     </span>
 
                                     <div className="min-w-0">
                                         {/* Línea 1: estado principal */}
                                         <p className={`text-xs font-bold leading-tight ${
-                                            loading
-                                                ? 'text-amber-700'
-                                                : incidents.length > 0
-                                                    ? 'text-emerald-700'
-                                                    : 'text-slate-600'
+                                            isProcessingNew
+                                                ? 'text-blue-700 animate-pulse'
+                                                : loading
+                                                    ? 'text-amber-700'
+                                                    : incidents.length > 0
+                                                        ? 'text-emerald-700'
+                                                        : 'text-slate-600'
                                         }`}>
-                                            {loading
-                                                ? '⟳ Sincronizando RSS...'
-                                                : incidents.length > 0
-                                                    ? `✓ ${incidents.length} incidente${incidents.length > 1 ? 's' : ''} detectado${incidents.length > 1 ? 's' : ''}`
-                                                    : '— Sin incidentes detectados'}
+                                            {isProcessingNew
+                                                ? '⚙ Procesando nueva entrada detectada...'
+                                                : loading
+                                                    ? '⟳ Buscando nuevas entradas...'
+                                                    : incidents.length > 0
+                                                        ? `✓ ${incidents.length} incidente${incidents.length > 1 ? 's' : ''} detectado${incidents.length > 1 ? 's' : ''}`
+                                                        : '— Sin incidentes detectados'}
                                         </p>
                                         {/* Línea 2: tiempo de sincronización */}
-                                        {lastSync && !loading && (
+                                        {(lastSync && !loading && !isProcessingNew) && (
                                             <p className="text-[10px] text-slate-400 mt-0.5">
-                                                Última sincronización: {relativeTime(lastSync)}
+                                                Última actualización: {relativeTime(lastSync)}
                                             </p>
                                         )}
                                     </div>
@@ -416,8 +475,8 @@ const MapComponent = () => {
                                             ? 'text-amber-500 cursor-not-allowed' 
                                             : 'text-slate-500 hover:text-[#002D62]'
                                     }`}
-                                    title="Sincronizar ahora"
-                                    aria-label="Sincronizar ahora"
+                                    title="Buscar nuevas entradas"
+                                    aria-label="Buscar nuevas entradas"
                                 >
                                     <RotateCw size={14} className={loading ? 'animate-spin' : ''} />
                                 </button>
@@ -541,15 +600,11 @@ const MapComponent = () => {
                         >
                             <Popup className="custom-popup">
                                 <div className="p-1">
-                                    <div className="flex justify-between items-start mb-2">
+                                    <div className="flex justify-between items-start mb-2 gap-2">
                                         <span className="inline-block px-2 py-1 bg-gray-100 text-xs font-bold rounded text-[#002D62]">
                                             {incident.category?.name || 'Evento'}
                                         </span>
-                                        {incident.is_approximate && (
-                                            <span className="flex items-center gap-1 text-[9px] font-bold text-gray-400 uppercase bg-gray-50 px-1 rounded border border-gray-100">
-                                                <AlertTriangle size={10} /> Ubicación Aproximada
-                                            </span>
-                                        )}
+                                        {renderPrecisionBadge(incident)}
                                     </div>
                                     <h3 className="font-bold text-sm mb-1">{incident.title}</h3>
                                     {incident.description && <p className="text-xs text-gray-600 mb-2">{incident.description}</p>}
@@ -557,6 +612,10 @@ const MapComponent = () => {
                                         Visto en: <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-blue-500 font-medium">{incident.source_name}</a>
                                         <br/>
                                         <span className="text-gray-400">{new Date(incident.event_date).toLocaleString('es-AR')}</span>
+                                        <div className="flex justify-between items-center text-[9px] text-gray-400 mt-1.5 pt-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                            <span>Vía: <span className="font-semibold text-gray-500 uppercase">{incident.source || 'nominatim'}</span></span>
+                                            <span>Precisión: <span className="font-semibold text-gray-500 uppercase">{incident.location_type || 'GEOMETRIC_CENTER'}</span></span>
+                                        </div>
                                     </div>
                                 </div>
                             </Popup>

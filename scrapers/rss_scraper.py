@@ -1,4 +1,5 @@
 import os
+import hashlib
 import requests
 import xml.etree.ElementTree as ET
 import time
@@ -8,8 +9,7 @@ import json
 import unicodedata
 from datetime import datetime
 import html
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut
+from geopy.exc import GeocoderTimedOut  # Kept for potential future use
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -168,54 +168,94 @@ except Exception as e:
     }
 
 def init_cache_db():
-    """Inicializa la tabla de caché de geolocalización si no existe"""
+    """
+    Inicializa la tabla geocoding_cache y aplica migraciones automáticas
+    para agregar columnas nuevas (source, location_type) a bases de datos existentes.
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
+
+        # Crear tabla si no existe (esquema completo)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS geocoding_cache (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                query TEXT UNIQUE,
-                latitude REAL NOT NULL,
-                longitude REAL NOT NULL,
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                query         TEXT    UNIQUE NOT NULL,
+                latitude      REAL    NOT NULL,
+                longitude     REAL    NOT NULL,
                 is_approximate INTEGER NOT NULL,
+                source        TEXT    NOT NULL DEFAULT 'nominatim',
+                location_type TEXT    NOT NULL DEFAULT 'GEOMETRIC_CENTER',
+                created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ── Migración automática: agregar columnas si la tabla ya existía sin ellas ──
+        existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(geocoding_cache)")}
+        if 'source' not in existing_cols:
+            cursor.execute("ALTER TABLE geocoding_cache ADD COLUMN source TEXT NOT NULL DEFAULT 'nominatim'")
+            print("[CACHE] Migración: columna 'source' agregada a geocoding_cache.")
+        if 'location_type' not in existing_cols:
+            cursor.execute("ALTER TABLE geocoding_cache ADD COLUMN location_type TEXT NOT NULL DEFAULT 'GEOMETRIC_CENTER'")
+            print("[CACHE] Migración: columna 'location_type' agregada a geocoding_cache.")
+
+        # ── Tabla de hash de contenido: evita re-geocodificar la misma noticia con distinta URL ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS content_hash_cache (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                hash       TEXT    UNIQUE NOT NULL,
+                source_url TEXT    NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"[ERROR] No se pudo inicializar la tabla de caché: {e}")
 
 def get_cached_coords(query):
-    """Consulta si la query ya fue geolocalizada previamente"""
+    """
+    Consulta si la query ya fue geolocalizada previamente.
+    Retorna (latitude, longitude, is_approximate, source, location_type) o None.
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT latitude, longitude, is_approximate FROM geocoding_cache WHERE query = ?", (query,))
+        cursor.execute(
+            "SELECT latitude, longitude, is_approximate, source, location_type "
+            "FROM geocoding_cache WHERE query = ?",
+            (query,)
+        )
         row = cursor.fetchone()
         conn.close()
         if row:
-            return row[0], row[1], bool(row[2])
+            return row[0], row[1], bool(row[2]), row[3], row[4]
     except Exception as e:
         print(f"[ERROR] Error al consultar caché: {e}")
     return None
 
-def save_to_cache(query, lat, lon, is_approx):
-    """Guarda una geolocalización en la caché para evitar futuras consultas de API"""
+def save_to_cache(query, lat, lon, is_approx, source='nominatim', location_type='GEOMETRIC_CENTER'):
+    """
+    Guarda una geolocalización en la caché para evitar futuras consultas de API.
+    - source: 'nominatim' | 'google' | 'fallback'
+    - location_type: valor de Google ('ROOFTOP', 'RANGE_INTERPOLATED', 'GEOMETRIC_CENTER', 'APPROXIMATE')
+                     o 'GEOMETRIC_CENTER' por defecto para resultados de Nominatim.
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR REPLACE INTO geocoding_cache (query, latitude, longitude, is_approximate)
-            VALUES (?, ?, ?, ?)
-        """, (query, lat, lon, int(is_approx)))
+            INSERT OR REPLACE INTO geocoding_cache
+                (query, latitude, longitude, is_approximate, source, location_type)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (query, lat, lon, int(is_approx), source, location_type))
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"[ERROR] Error al guardar en caché: {e}")
 
-# Inicializar caché en el arranque
+# Inicializar caché en el arranque (crea tabla y aplica migraciones)
 init_cache_db()
 
 def is_url_processed(url):
@@ -230,6 +270,42 @@ def is_url_processed(url):
     except Exception as e:
         print(f"[ERROR] Error al verificar URL duplicada en la DB: {e}")
         return False
+
+def make_content_hash(title: str, pub_date_str: str | None) -> str:
+    """
+    Genera un hash MD5 del título normalizado + fecha de publicación.
+    Detecta la misma noticia publicada con distinta URL (muy común en diarios sanjuaninos).
+    """
+    normalized = normalize_text(title.strip().lower())
+    raw = f"{normalized}|{pub_date_str or ''}"
+    return hashlib.md5(raw.encode('utf-8')).hexdigest()
+
+def is_content_processed(content_hash: str) -> bool:
+    """Retorna True si ya procesamos una noticia con este hash de contenido."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM content_hash_cache WHERE hash = ?", (content_hash,))
+        row = cursor.fetchone()
+        conn.close()
+        return row is not None
+    except Exception as e:
+        print(f"[ERROR] Error al verificar hash de contenido: {e}")
+        return False
+
+def save_content_hash(content_hash: str, source_url: str):
+    """Persiste el hash de contenido para que futuras corridas no re-geocodifiquen la misma noticia."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO content_hash_cache (hash, source_url) VALUES (?, ?)",
+            (content_hash, source_url)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR] Error al guardar hash de contenido: {e}")
 
 def clean_locality_name(name):
     # Quitar parte después de guión (ej: "Vallecito - Paraje..." -> "Vallecito")
@@ -403,36 +479,106 @@ MEDIA_NAMES = {
     "telesoldiario.com": "Telesol Diario"
 }
 
-geolocator = Nominatim(user_agent="zondata_scraper")
 
 def is_within_bounds(lat, lon):
     return BOUNDING_BOX[0] <= lat <= BOUNDING_BOX[1] and BOUNDING_BOX[2] <= lon <= BOUNDING_BOX[3]
 
+def resolve_geocode_google(query_str):
+    """
+    Geocodifica usando Google Geocoding API como fallback de Nominatim.
+    - Aplica Component Restriction: solo devuelve resultados en San Juan, Argentina.
+    - Captura location_type para determinar precisión:
+        ROOFTOP            → exacto (edificio/domicilio)
+        RANGE_INTERPOLATED → preciso (punto en cuadra)
+        GEOMETRIC_CENTER   → aproximado (centro de calle o barrio)
+        APPROXIMATE        → muy aproximado (ciudad o zona)
+    Retorna (lat, lon, is_approximate, location_type, formatted_address) o None.
+    """
+    api_key = get_env_variable("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        return None
+
+    print(f"[GOOGLE] Consultando geocoding para: '{query_str}'")
+    try:
+        url = "https://maps.googleapis.com/maps/api/geocode/json"
+        params = {
+            "address": query_str,
+            "components": "administrative_area:San Juan|country:AR",
+            "region": "ar",   # Prioriza resultados de Argentina globalmente
+            "key": api_key
+        }
+
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            status = data.get("status")
+
+            if status == "OK" and data.get("results"):
+                result = data["results"][0]
+                geometry = result.get("geometry", {})
+                location = geometry.get("location", {})
+                lat = location.get("lat")
+                lng = location.get("lng")
+
+                # ROOFTOP y RANGE_INTERPOLATED son suficientemente precisos.
+                # GEOMETRIC_CENTER y APPROXIMATE se consideran aproximados.
+                loc_type = geometry.get("location_type", "APPROXIMATE")
+                is_approx = loc_type not in ("ROOFTOP", "RANGE_INTERPOLATED")
+                formatted = result.get("formatted_address", "")
+
+                if lat and lng and is_within_bounds(lat, lng):
+                    print(f"[GOOGLE] OK - {formatted} ({loc_type}) -> {lat}, {lng}")
+                    return lat, lng, is_approx, loc_type, formatted
+                else:
+                    print(f"[GOOGLE][WARNING] Coords fuera de bounding box para '{query_str}': {lat}, {lng}")
+
+            elif status == "ZERO_RESULTS":
+                print(f"[GOOGLE] Sin resultados para: '{query_str}'")
+            else:
+                print(f"[GOOGLE][WARNING] Status inesperado '{status}' para: '{query_str}'")
+        else:
+            print(f"[GOOGLE][WARNING] HTTP {response.status_code} para: '{query_str}'")
+
+    except Exception as e:
+        print(f"[GOOGLE][ERROR] Excepción consultando '{query_str}': {e}")
+
+    return None
+
 def resolve_geocode(query_str, is_approx):
     """
-    Resuelve una geolocalización utilizando primero la caché local y, si no existe,
-    realiza la consulta externa (Nominatim) y almacena el resultado exitoso en caché.
+    Resuelve una geolocalización con el máximo de precisión posible.
+    Embudo de 2 niveles (diseño simplificado para volúmenes bajos con alta calidad):
+
+      1. Caché SQLite  → hit instantáneo, sin costo.
+      2. Google Geocoding API → máxima precisión para Argentina.
+         (40.000 consultas/mes gratuitas — más que suficiente para este proyecto)
+
+    Nominatim fue descartado porque produce ubicaciones incorrectas en direcciones
+    argentinas (ej. esquinas de San Juan devueltas a localidades equivocadas).
+
+    Retorna (latitude, longitude, is_approximate, source, location_type) o None.
     """
-    # 1. Consultar caché local
+    # 1. Caché local → hit instantáneo, costo cero
     cached = get_cached_coords(query_str)
     if cached is not None:
-        return cached[0], cached[1] # lat, lon
+        lat, lon, approx, source, loc_type = cached
+        print(f"[CACHE] HIT ({source} / {loc_type}): '{query_str}'")
+        return lat, lon, approx, source, loc_type
 
-    # 2. Si no está en caché, geocodificar con Nominatim
-    try:
-        # Nominatim requiere un máximo de 1 petición por segundo para no bloquear la IP (Status 429)
-        time.sleep(1.5)
-        
-        geolocator = Nominatim(user_agent="zondata_scraper")
-        location = geolocator.geocode(query_str, timeout=10)
-        if location and is_within_bounds(location.latitude, location.longitude):
-            # Guardar en la caché local
-            save_to_cache(query_str, location.latitude, location.longitude, is_approx)
-            return location.latitude, location.longitude
-    except Exception as e:
-        print(f"[WARNING] Falló consulta externa para '{query_str}': {e}")
-        pass
+    # 2. Google Geocoding API → precisión máxima, restricción a San Juan, AR
+    google_res = resolve_geocode_google(query_str)
+    if google_res:
+        g_lat, g_lng, g_approx, g_loc_type, g_formatted = google_res
+        final_approx = g_approx or is_approx
+        save_to_cache(
+            query_str, g_lat, g_lng, final_approx,
+            source='google', location_type=g_loc_type
+        )
+        return g_lat, g_lng, final_approx, 'google', g_loc_type
+
+    print(f"[GEO][FALLO] No se pudo resolver: '{query_str}'")
     return None
+
 
 def sanitize_location_text(text, rule=None):
     """Limpia el texto de falsos positivos basándose en las reglas del JSON"""
@@ -510,7 +656,7 @@ def geocoding_funnel(text, rule=None):
         query = f"{ruta} & Calle {calle_num}, {local_context}"
         coords = resolve_geocode(query, False)
         if coords:
-            return coords[0], coords[1], False
+            return coords[0], coords[1], False, coords[3], coords[4]
 
     # 2. Caso especial: Intersección de calle numérica y otra calle numérica (ej. Calle 9 y 10)
     calle_num_interseccion = re.search(r"[Cc]alle[s]?\s+(\d+)\s+(?:y|e|entre)\s+(\d+)", text_clean, re.IGNORECASE)
@@ -520,7 +666,7 @@ def geocoding_funnel(text, rule=None):
         query = f"Calle {c1} & Calle {c2}, {local_context}"
         coords = resolve_geocode(query, False)
         if coords:
-            return coords[0], coords[1], False
+            return coords[0], coords[1], False, coords[3], coords[4]
 
     intersection_patterns = [
         # Ruta X y Calle Nombre (ej. Ruta 40 y Agustín Gómez)
@@ -549,12 +695,12 @@ def geocoding_funnel(text, rule=None):
             query = " & ".join(filter(None, match.groups()))
             coords = resolve_geocode(f"{query}, {local_context}", False)
             if coords:
-                return coords[0], coords[1], False
+                return coords[0], coords[1], False, coords[3], coords[4]
             fallback = rule.get("fallback_context", "San Juan, Argentina") if rule else "San Juan, Argentina"
             if local_context != fallback:
                 coords_fallback = resolve_geocode(f"{query}, {fallback}", False)
                 if coords_fallback:
-                    return coords_fallback[0], coords_fallback[1], False
+                    return coords_fallback[0], coords_fallback[1], False, coords_fallback[3], coords_fallback[4]
 
     for pattern in linear_precise_patterns:
         match = re.search(pattern, text_clean)
@@ -562,12 +708,12 @@ def geocoding_funnel(text, rule=None):
             query = " ".join(filter(None, match.groups()))
             coords = resolve_geocode(f"{query}, {local_context}", False)
             if coords:
-                return coords[0], coords[1], False
+                return coords[0], coords[1], False, coords[3], coords[4]
             fallback = rule.get("fallback_context", "San Juan, Argentina") if rule else "San Juan, Argentina"
             if local_context != fallback:
                 coords_fallback = resolve_geocode(f"{query}, {fallback}", False)
                 if coords_fallback:
-                    return coords_fallback[0], coords_fallback[1], False
+                    return coords_fallback[0], coords_fallback[1], False, coords_fallback[3], coords_fallback[4]
 
     for pattern in approximate_patterns:
         match = re.search(pattern, text_clean)
@@ -575,10 +721,11 @@ def geocoding_funnel(text, rule=None):
             query = " ".join(filter(None, match.groups()))
             coords = resolve_geocode(f"{query}, {local_context}", True)
             if coords:
-                return coords[0], coords[1], True
+                return coords[0], coords[1], True, coords[3], coords[4]
 
     for loc in LOCALIDADES:
-        if loc.lower() in text.lower():
+        pattern = r'\b' + re.escape(loc.lower()) + r'\b'
+        if re.search(pattern, text.lower()):
             # Evitar colisión si el nombre de la localidad coincide con un departamento
             is_collision = False
             for dept in DEPARTAMENTOS:
@@ -593,16 +740,19 @@ def geocoding_funnel(text, rule=None):
             
             coords = resolve_geocode(f"{LOCALIDADES_CONTEXT[loc]}, San Juan, Argentina", True)
             if coords:
-                return coords[0], coords[1], True
+                return coords[0], coords[1], True, coords[3], coords[4]
 
     for dept in DEPARTAMENTOS:
-        if dept.lower() in text.lower():
+        pattern = r'\b' + re.escape(dept.lower()) + r'\b'
+        if re.search(pattern, text.lower()):
             coords = resolve_geocode(f"{dept}, San Juan, Argentina", True)
             if coords:
-                return coords[0], coords[1], True
+                return coords[0], coords[1], True, coords[3], coords[4]
 
-    if any(loc.lower() in text.lower() for loc in LOCALIDADES) or any(dept.lower() in text.lower() for dept in DEPARTAMENTOS) or "san juan" in text.lower():
-        return -31.5375, -68.53639, True
+    if any(re.search(r'\b' + re.escape(loc.lower()) + r'\b', text.lower()) for loc in LOCALIDADES) or \
+       any(re.search(r'\b' + re.escape(dept.lower()) + r'\b', text.lower()) for dept in DEPARTAMENTOS) or \
+       re.search(r'\bsan juan\b', text.lower()):
+        return -31.5375, -68.53639, True, 'fallback', 'APPROXIMATE'
     return None
 
 def clean_html(text):
@@ -618,15 +768,18 @@ def clean_html(text):
 
 def has_keyword_match(text, keyword):
     """
-    Verifica si una palabra clave está en el texto.
-    - Normaliza tildes en ambos lados (e.g. 'arbol' == 'árbol')
-    - Exige límites de palabra (\\b) para términos cortos (<= 5 chars) como 'moto'
+    Verifica si una palabra clave está en el texto de forma precisa.
+    - Normaliza tildes y diacríticos (e.g. 'arbol' == 'árbol').
+    - Si la keyword tiene espacios (ej. "siniestro vial"), realiza coincidencia de subcadena.
+    - Si es una palabra única (ej. "impacto", "choque"), exige límites de palabra (\b)
+      para evitar falsos positivos (como "impacto" coincidiendo dentro de "impactos").
     """
     text_n = normalize_text(text)
     kw_n = normalize_text(keyword)
-    if len(kw_n) <= 5:
-        return bool(re.search(r'\b' + re.escape(kw_n) + r'\b', text_n))
-    return kw_n in text_n
+    if ' ' in kw_n:
+        return kw_n in text_n
+    return bool(re.search(r'\b' + re.escape(kw_n) + r'\b', text_n))
+
 
 def fetch_article_text(url):
     """Descarga el cuerpo de la noticia y extrae el texto de las etiquetas de párrafo, filtrando navegación/pie de página"""
@@ -661,6 +814,16 @@ def fetch_article_text(url):
 def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", rule=None, pub_date_str=None):
     title = clean_html(title)
     description = clean_html(description)
+
+    # ─── GUARDIA ANTI-DUPLICADO: Hash de contenido ────────────────────────────
+    # Genera un hash MD5 del título normalizado + fecha de publicación.
+    # Si ya procesamos una noticia con este contenido (aunque tenga distinta URL),
+    # la descartamos ANTES de hacer cualquier deep fetch o llamada de geocoding.
+    content_hash = make_content_hash(title, pub_date_str)
+    if is_content_processed(content_hash):
+        print(f"[HASH-DUP] Noticia ya procesada (mismo título/fecha, distinta URL): '{title[:80]}...'")
+        return None
+
     text_to_search = (title + " " + description).lower()
     # Evitar falsos positivos de "fuego" en palabras que no refieren a un incendio (ej. matafuegos)
     text_to_search = text_to_search.replace("matafuegos", "").replace("matafuego", "")
@@ -702,21 +865,21 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
     # ─── FASE 4: Geocodificación con texto completo ────────────────────────────
     res = geocoding_funnel(title, rule)
     if res and not res[2]:
-        lat, lon, is_approx = res
+        lat, lon, is_approx, source, loc_type = res
     else:
         full_res = geocoding_funnel(title + " " + description, rule)
         if full_res:
-            lat, lon, is_approx = full_res
+            lat, lon, is_approx, source, loc_type = full_res
         else:
-            lat, lon, is_approx = None, None, True
+            lat, lon, is_approx, source, loc_type = None, None, True, 'fallback', 'APPROXIMATE'
 
     # Intentar mejorar coordenadas con el cuerpo si aún son aproximadas
     if body_text and (is_approx or lat is None):
         deep_res = geocoding_funnel(body_text, rule)
         if deep_res:
-            d_lat, d_lon, d_is_approx = deep_res
+            d_lat, d_lon, d_is_approx, d_source, d_loc_type = deep_res
             if not d_is_approx or lat is None:
-                lat, lon, is_approx = d_lat, d_lon, d_is_approx
+                lat, lon, is_approx, source, loc_type = d_lat, d_lon, d_is_approx, d_source, d_loc_type
 
     # ─── FASE 5: Detección de categoría ────────────────────────────────────────
     # Usamos title_desc_combined para verificar el CONTEXTO principal (evita falsos
@@ -731,7 +894,11 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
                 break
                 
     if not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_FIRE):
-        is_firearm = "arma de fuego" in text_to_search or "armas de fuego" in text_to_search or "disparó" in text_to_search
+        is_firearm = any(x in text_to_search for x in [
+            "arma de fuego", "armas de fuego", "disparó", "disparo", "dispararon",
+            "balearon", "balear", "herido de bala", "herida de bala", "impactos de bala", 
+            "recibio disparos", "recibió disparos", "tiros", "disparos", "balacera", "balazo"
+        ])
         is_animal = "llamas" in text_to_search and any(a in text_to_search for a in ["animal", "aves", "guanaco", "fauna", "especie", "ejemplar"])
         if not (is_firearm or is_animal):
             detected_category = "incendio"
@@ -741,28 +908,41 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
                     break
                     
     if not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_ACCIDENT):
-        vuelco_context = [
-            "auto", "automóvil", "automovil", "vehículo", "vehiculo", "coche",
-            "camión", "camion", "camioneta", "colectivo", "micro", "ómnibus", "omnibus", "bus",
-            "moto", "motocicleta", "motociclista", "ciclomotor", "rodado",
-            "ciclista", "bicicleta", "bici", "peatón", "peatona", "transeúnte", "transeunte",
-            "utilitario", "furgón", "furgon", "trafic", "ambulancia", "patrullero",
-            "ruta", "calle", "avenida", "av.", "autopista", "carretera", "asfalto", "calzada",
-            "banquina", "zanja", "cuneta", "bache", "semáforo", "semaforo", "esquina",
-            "conductor", "conductores", "pasajero", "pasajeros", "volcadura", "tránsito", "transito", "vial"
-        ]
-        false_positives = [
-            "vuelco inesperado", "vuelco en la causa", "vuelco en la investigacion",
-            "vuelco en la investigación", "vuelco en el caso", "giro inesperado",
-            "cayó detenido", "cayo detenido", "cayó preso", "cayo preso",
-            "cayó la banda", "cayo la banda", "cayó una banda", "cayo una banda",
-            "cayó por el robo", "cayo por el robo", "cayó por robo", "cayo por robo",
-            "cayó por robar", "cayo por robar", "cayó in fraganti", "cayo in fraganti",
-            "cayó con las manos", "cayo con las manos", "cayó tras", "cayo tras",
-            "cayó acusado", "cayo acusado", "caída de granizo", "caida de granizo",
-            "caída del cabello", "caida del cabello", "caída de las ventas", "caida de las ventas",
-            "caída del consumo", "caida del consumo"
-        ]
+        # Guardia contra falsos positivos: incidentes de violencia armada, disparos o asaltos
+        # que no son siniestros viales sino delitos policiales o crímenes de sangre.
+        is_armed_violence = any(x in text_to_search for x in [
+            "balearon", "balear", "herido de bala", "herida de bala", "impactos de bala", 
+            "recibio disparos", "recibió disparos", "tiros", "disparos", "apuñalaron", 
+            "apunalar", "apuñaló", "apunalo", "herido de arma blanca", "puñalada", "punialada"
+        ])
+        has_real_crash = any(x in text_to_search for x in ["chocó contra", "choco contra", "colisionaron", "embistió a", "embistio a"])
+        
+        if is_armed_violence and not has_real_crash:
+            # Es un hecho policial de sangre, no un accidente vial. Se saltea.
+            pass
+        else:
+            vuelco_context = [
+                "auto", "automóvil", "automovil", "vehículo", "vehiculo", "coche",
+                "camión", "camion", "camioneta", "colectivo", "micro", "ómnibus", "omnibus", "bus",
+                "moto", "motocicleta", "motociclista", "ciclomotor", "rodado",
+                "ciclista", "bicicleta", "bici", "peatón", "peatona", "transeúnte", "transeunte",
+                "utilitario", "furgón", "furgon", "trafic", "ambulancia", "patrullero",
+                "ruta", "calle", "avenida", "av.", "autopista", "carretera", "asfalto", "calzada",
+                "banquina", "zanja", "cuneta", "bache", "semáforo", "semaforo", "esquina",
+                "conductor", "conductores", "pasajero", "pasajeros", "volcadura", "tránsito", "transito", "vial"
+            ]
+            false_positives = [
+                "vuelco inesperado", "vuelco en la causa", "vuelco en la investigacion",
+                "vuelco en la investigación", "vuelco en el caso", "giro inesperado",
+                "cayó detenido", "cayo detenido", "cayó preso", "cayo preso",
+                "cayó la banda", "cayo la banda", "cayó una banda", "cayo una banda",
+                "cayó por el robo", "cayo por el robo", "cayó por robo", "cayo por robo",
+                "cayó por robar", "cayo por robar", "cayó in fraganti", "cayo in fraganti",
+                "cayó con las manos", "cayo con las manos", "cayó tras", "cayo tras",
+                "cayó acusado", "cayo acusado", "caída de granizo", "caida de granizo",
+                "caída del cabello", "caida del cabello", "caída de las ventas", "caida de las ventas",
+                "caída del consumo", "caida del consumo"
+            ]
         for slug, keywords in ACCIDENT_MAPPING.items():
             if any(has_keyword_match(text_to_search, kw) for kw in keywords):
                 if slug == "vuelco":
@@ -796,6 +976,9 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         from datetime import timedelta
         event_date = pub_date - timedelta(days=1)
         
+    # Persistir el hash ANTES de retornar para que futuras corridas no re-geocodifiquen esta noticia
+    save_content_hash(content_hash, link or '')
+
     return {
         "etiqueta": detected_category,
         "titulo": title[:250],
@@ -803,6 +986,8 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         "latitud": lat,
         "longitud": lon,
         "is_approximate": is_approx,
+        "source": source,
+        "location_type": loc_type,
         "is_fatal": is_fatal,
         "fuente_nombre": fuente_nombre,
         "fuente_url": link,

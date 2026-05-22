@@ -108,14 +108,31 @@ class IncidentController extends Controller
             ];
         }
 
-        // 3. Detección de Calle o Avenida
-        $streetPattern = '/(?:calle|avenida|av\.?|pasaje)\s+([a-z0-9áéíóúüñ\s]+?)(?=\s+(?:y|e|al|altura|en|frente|cerca|de)\b|$)/i';
-        if (preg_match($streetPattern, $textToSearch, $matches)) {
-            $nameCandidate = trim($matches[1]);
-            if (strlen($nameCandidate) > 2 && strlen($nameCandidate) < 40) {
-                $isAv = str_contains($textToSearch, 'avenida') || str_contains($textToSearch, 'av.');
-                $prefix = $isAv ? 'Avenida ' : 'Calle ';
-                $roadName = $prefix . ucwords($nameCandidate);
+        // 3. Detección de Calle o Avenida (y posibles intersecciones)
+        // Intentar detectar primero una intersección: "Calle X y Calle Y"
+        $intersectionPattern = '/(?:calle|avenida|av\.?|pasaje)?\s*([a-z0-9áéíóúüñ\s]+?)\s+(?:y|e|intersección\s+(?:de|con)?|cruce\s+(?:de|con)?|esquina)\s+(?:calle|avenida|av\.?|pasaje)?\s*([a-z0-9áéíóúüñ\s]+?)(?=\s+(?:al|altura|en|frente|cerca|de\s+la\b|\.|,|$))/i';
+        
+        if (preg_match($intersectionPattern, $textToSearch, $matches)) {
+            $name1 = trim($matches[1]);
+            $name2 = trim($matches[2]);
+            if (strlen($name1) > 2 && strlen($name2) > 2) {
+                // Limpiar conectores finales capturados por accidente
+                $name1 = preg_replace('/\s+(de|del|la|las|los|el)$/i', '', $name1);
+                $name2 = preg_replace('/\s+(de|del|la|las|los|el)$/i', '', $name2);
+                $roadName = ucwords(trim($name1)) . ' y ' . ucwords(trim($name2));
+            }
+        }
+        
+        // Si no se encontró intersección, buscar calle simple
+        if (!$roadName) {
+            $streetPattern = '/(?:calle|avenida|av\.?|pasaje)\s+([a-z0-9áéíóúüñ\s]+?)(?=\s+(?:y|e|al|altura|en|frente|cerca|de\s+la\b|\.|,|$))/i';
+            if (preg_match($streetPattern, $textToSearch, $matches)) {
+                $nameCandidate = trim($matches[1]);
+                if (strlen($nameCandidate) > 2 && strlen($nameCandidate) < 40) {
+                    $isAv = str_contains($textToSearch, 'avenida') || str_contains($textToSearch, 'av.');
+                    $prefix = $isAv ? 'Avenida ' : 'Calle ';
+                    $roadName = $prefix . ucwords($nameCandidate);
+                }
             }
         }
 
@@ -266,6 +283,8 @@ class IncidentController extends Controller
             'latitud'      => 'required|numeric',
             'longitud'     => 'required|numeric',
             'is_approximate' => 'nullable|boolean',
+            'source'         => 'nullable|string|max:255',
+            'location_type'  => 'nullable|string|max:255',
             'is_fatal'     => 'nullable|boolean',
             'fuente_nombre' => 'nullable|string|max:255',
             'fuente_url'   => 'nullable|url',
@@ -455,7 +474,20 @@ class IncidentController extends Controller
 
             $newLocationIsBetter = false;
 
-            if ($existingIsApprox && !$newIsApprox) {
+            // Comparar precisión de location_type
+            $precisionRanks = [
+                'ROOFTOP' => 4,
+                'RANGE_INTERPOLATED' => 3,
+                'GEOMETRIC_CENTER' => 2,
+                'APPROXIMATE' => 1
+            ];
+            
+            $existingRank = $precisionRanks[$fuzzyDuplicate->location_type ?? 'GEOMETRIC_CENTER'] ?? 2;
+            $newRank = $precisionRanks[$validated['location_type'] ?? 'GEOMETRIC_CENTER'] ?? 2;
+
+            if ($newRank > $existingRank) {
+                $newLocationIsBetter = true;
+            } elseif ($existingIsApprox && !$newIsApprox) {
                 // El nuevo es preciso y el existente era aproximado
                 $newLocationIsBetter = true;
             } elseif (!$existingHasLocality && $newHasLocality) {
@@ -469,6 +501,8 @@ class IncidentController extends Controller
                 $updateData['latitude'] = $validated['latitud'];
                 $updateData['longitude'] = $validated['longitud'];
                 $updateData['is_approximate'] = $newIsApprox;
+                $updateData['source'] = $validated['source'] ?? 'nominatim';
+                $updateData['location_type'] = $validated['location_type'] ?? 'GEOMETRIC_CENTER';
                 $updateData['locality_id'] = $localityId;
                 $updateData['department_id'] = $departmentId;
                 $updateData['province_id'] = $provinceId;
@@ -533,6 +567,8 @@ class IncidentController extends Controller
             'latitude'       => $validated['latitud'],
             'longitude'      => $validated['longitud'],
             'is_approximate' => $validated['is_approximate'] ?? false,
+            'source'         => $validated['source'] ?? 'nominatim',
+            'location_type'  => $validated['location_type'] ?? 'GEOMETRIC_CENTER',
             'is_fatal'       => $validated['is_fatal'] ?? null,
             'status'         => 'Published',
             'event_date'     => $eventDate,

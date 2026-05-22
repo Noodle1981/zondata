@@ -17,6 +17,8 @@ class Incident extends Model
         'latitude',
         'longitude',
         'is_approximate',
+        'source',
+        'location_type',
         'is_fatal',
         'event_date',
         'status',

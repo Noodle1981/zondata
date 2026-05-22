@@ -1,9 +1,11 @@
 {
   "locality_exclusions": [
     "cabecera",
-    "san juan"
+    "san juan",
+    "centenario"
   ],
   "clean_prefixes": [
-    "^(?:b[°º\\.]|barrio|v[°º\\.]|villa|paraje)\\s+"
+    "^(?:b[°º\\.]|barrio|v[°º\\.]|villa|paraje)\\s+",
+    "^(?:calle|avenida|av\\.?|ruta|pasaje|boulevard|bvd\\.?)\\s+"
   ]
 }
