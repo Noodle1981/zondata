@@ -16,17 +16,17 @@
     }
 
     .custom-scrollbar::-webkit-scrollbar-track {
-        background: #f1f1f1;
+        background: rgba(0, 0, 0, 0.25);
         border-radius: 10px;
     }
 
     .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #F28C28;
+        background: rgba(242, 140, 40, 0.4);
         border-radius: 10px;
     }
 
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #d97a1d;
+        background: rgba(242, 140, 40, 0.75);
     }
 
     /* Cursor personalizado para el Mapa */
@@ -37,7 +37,7 @@
     /* Firefox support */
     .custom-scrollbar {
         scrollbar-width: thin;
-        scrollbar-color: #F28C28 #f1f1f1;
+        scrollbar-color: rgba(242, 140, 40, 0.4) rgba(0, 0, 0, 0.25);
     }
 
     /* Estilos para el Date Picker personalizado */

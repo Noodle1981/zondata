@@ -5,7 +5,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { es } from 'date-fns/locale/es';
 import L from 'leaflet';
-import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw, MapPin, AlertCircle } from 'lucide-react';
+import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw, MapPin, AlertCircle, Clock, Skull, CheckCircle } from 'lucide-react';
 import IncidentsSummaryModal from './IncidentsSummaryModal';
 
 // Fix for default Leaflet icons in React
@@ -286,137 +286,146 @@ const MapComponent = () => {
     return (
         <div className="relative w-full h-screen overflow-hidden flex">
             
-            {/* Sidebar Toggle Button (Floating, only visible when closed) */}
+            {/* Sidebar Toggle Button — dark glass floating pill */}
             {!sidebarOpen && (
-                <button 
+                <button
                     onClick={() => setSidebarOpen(true)}
-                    className="absolute top-4 left-4 z-[1000] bg-white p-2 rounded shadow-md text-[#002D62] hover:bg-gray-100 transition-colors"
-                    style={{ zIndex: 1000 }} // Ensure it's above the map
+                    className="absolute top-4 left-4 z-[1000] flex items-center gap-2 bg-[#070d19]/85 backdrop-blur-xl border border-white/10 px-3 py-2 rounded-xl shadow-2xl text-white hover:bg-[#0d1627]/90 hover:border-white/20 transition-all duration-200 active:scale-95"
+                    style={{ zIndex: 1000 }}
                     aria-label="Abrir menú lateral"
                 >
-                    <Menu size={24} />
+                    <Menu size={18} strokeWidth={2} />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-white/70">Menú</span>
                 </button>
             )}
 
-            {/* Collapsible Sidebar */}
-            <div 
-                className={`absolute top-0 left-0 h-full w-80 bg-white shadow-2xl transition-transform duration-300 ease-in-out z-[999] flex flex-col overflow-hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+            {/* Collapsible Sidebar — Dark Glassmorphic Operations Center */}
+            <div
+                className={`absolute top-0 left-0 h-full w-80 backdrop-blur-2xl bg-[#070d19]/90 border-r border-white/[0.07] shadow-[5px_0_40px_rgba(0,0,0,0.6)] transition-transform duration-300 ease-in-out z-[999] flex flex-col overflow-hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
                 style={{ zIndex: 999 }}
             >
-                    {/* Cabecera Sidebar con Logo Original */}
-                    <div className="bg-white border-b border-gray-100 pt-3 pb-1 flex justify-center">
-                        <img src="/images/logo.jpeg" alt="ZonData Logo" className="w-[80%] h-auto object-contain" />
+                {/* ══ HEADER ══ Logo + Close */}
+                <div className="px-4 pt-4 pb-3 border-b border-white/[0.06] flex items-center justify-between gap-3">
+                    {/* Logo framed in a glass card */}
+                    <div className="flex-1 bg-white/[0.06] border border-white/[0.09] rounded-xl px-3 py-2 flex items-center justify-center">
+                        <img src="/images/logo.jpeg" alt="ZonData Logo" className="h-7 w-auto object-contain brightness-110" />
                     </div>
+                    <button
+                        onClick={() => setSidebarOpen(false)}
+                        className="flex-shrink-0 p-2 rounded-xl bg-white/[0.04] border border-white/[0.07] text-white/40 hover:text-white hover:bg-white/[0.09] hover:border-white/20 transition-all duration-200 active:scale-90"
+                        aria-label="Cerrar panel"
+                    >
+                        <X size={16} strokeWidth={2.5} />
+                    </button>
+                </div>
 
-                    {/* Selector de Fecha Estilizado en Azul */}
-                    <div className="pt-2 pb-4 px-4 border-b border-gray-100 bg-white">
-                        <div className="flex items-center justify-end mb-2 md:hidden">
-                            <button 
-                                onClick={() => setSidebarOpen(false)} 
-                                className="text-gray-400 hover:text-gray-600"
-                                aria-label="Cerrar panel"
-                            >
-                                <X size={20} />
-                            </button>
+                {/* ══ DATE PICKER ══ */}
+                <div className="px-4 py-3 border-b border-white/[0.06]">
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-[#EAB308]/80 z-10">
+                            <Calendar size={14} strokeWidth={2.5} />
                         </div>
-                                          <div className="relative group">
-                            {/* Icono Izquierda (Oro) */}
-                            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-[#EAB308] z-10">
-                                <Calendar size={15} strokeWidth={2.5} />
-                            </div>
-                            
-                            <DatePicker
-                                selected={selectedDate ? new Date(selectedDate + 'T12:00:00') : null}
-                                onChange={(date) => {
-                                    if (date) {
-                                        const year = date.getFullYear();
-                                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                                        const day = String(date.getDate()).padStart(2, '0');
-                                        setSelectedDate(`${year}-${month}-${day}`);
-                                    }
-                                }}
-                                locale={es}
-                                dateFormat="dd/MM/yyyy"
-                                maxDate={new Date()}
-                                className="w-full bg-[#002552] border-none rounded-xl py-2.5 pl-9 pr-9 text-sm font-black text-white focus:ring-4 focus:ring-[#EAB308]/20 outline-none transition-all shadow-xl shadow-blue-950/40 text-center tracking-wider cursor-pointer"
-                                wrapperClassName="w-full"
-                                aria-label="Seleccionar fecha de incidentes"
-                                calendarClassName="premium-calendar"
-                            />
-
-                            {/* Icono Derecha (Blanco) */}
-                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-white/60 z-10">
-                                <Calendar size={13} />
-                            </div>
-                        </div>
+                        <DatePicker
+                            selected={selectedDate ? new Date(selectedDate + 'T12:00:00') : null}
+                            onChange={(date) => {
+                                if (date) {
+                                    const year = date.getFullYear();
+                                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                                    const day = String(date.getDate()).padStart(2, '0');
+                                    setSelectedDate(`${year}-${month}-${day}`);
+                                }
+                            }}
+                            locale={es}
+                            dateFormat="dd/MM/yyyy"
+                            maxDate={new Date()}
+                            className="w-full bg-white/[0.05] border border-white/[0.10] hover:border-white/20 focus:border-[#EAB308]/40 focus:ring-2 focus:ring-[#EAB308]/10 rounded-xl py-2.5 pl-9 pr-3 text-sm font-bold text-white outline-none transition-all shadow-inner text-center tracking-wider cursor-pointer placeholder:text-white/30"
+                            wrapperClassName="w-full"
+                            aria-label="Seleccionar fecha de incidentes"
+                            calendarClassName="premium-calendar"
+                        />
                     </div>
-                
-                <div className="flex-1 min-h-0 flex flex-col bg-[#F4F4F4]">
-                    {/* Navegación por Pestañas de Categoría */}
-                    <div className="bg-white border-b border-gray-200 p-2">
-                        <div className="flex gap-4 bg-gray-100 p-2 rounded-xl">
-                            <button 
-                                onClick={() => toggleTab('wind')}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('wind') ? 'bg-white shadow-sm text-[#EAB308]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
-                            >
-                                <Wind size={20} />
-                                <span className="text-[10px] font-bold mt-1 uppercase">Viento</span>
-                                {tabCounts.wind > 0 && (
-                                    <span className="absolute -top-3 -right-3 bg-[#002D62] text-[#F28C28] text-sm font-black w-10 h-10 flex items-center justify-center rounded-full shadow-xl border-2 border-white ring-4 ring-[#002D62]/10">
-                                        {tabCounts.wind}
-                                    </span>
-                                )}
-                            </button>
-                            <button 
-                                onClick={() => toggleTab('accident')}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('accident') ? 'bg-white shadow-sm text-[#2563EB]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
-                            >
-                                <Car size={20} />
-                                <span className="text-[10px] font-bold mt-1 uppercase">Tránsito</span>
-                                {tabCounts.accident > 0 && (
-                                    <span className="absolute -top-3 -right-3 bg-[#002D62] text-[#F28C28] text-sm font-black w-10 h-10 flex items-center justify-center rounded-full shadow-xl border-2 border-white ring-4 ring-[#002D62]/10">
-                                        {tabCounts.accident}
-                                    </span>
-                                )}
-                            </button>
-                            <button 
-                                onClick={() => toggleTab('fire')}
-                                className={`flex-1 flex flex-col items-center py-2 rounded-md transition-all relative ${visibleTabs.includes('fire') ? 'bg-white shadow-sm text-[#DC2626]' : 'text-gray-400 hover:text-gray-500 opacity-60'}`}
-                            >
-                                <Flame size={20} />
-                                <span className="text-[10px] font-bold mt-1 uppercase">Incendios</span>
-                                {tabCounts.fire > 0 && (
-                                    <span className="absolute -top-3 -right-3 bg-[#002D62] text-[#F28C28] text-sm font-black w-10 h-10 flex items-center justify-center rounded-full shadow-xl border-2 border-white ring-4 ring-[#002D62]/10">
-                                        {tabCounts.fire}
-                                    </span>
-                                )}
-                            </button>
-                        </div>
-                    </div>
+                </div>
 
-                    <div className="flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar">
-                        {/* Estado Premium / Error */}
+                {/* ══ CATEGORY FILTER PILLS ══ */}
+                <div className="px-4 py-3 border-b border-white/[0.06]">
+                    <div className="flex gap-2">
+                        {/* Viento */}
+                        <button
+                            onClick={() => toggleTab('wind')}
+                            className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border transition-all duration-200 active:scale-95 ${
+                                visibleTabs.includes('wind')
+                                    ? 'bg-[#EAB308]/10 border-[#EAB308]/40 text-[#EAB308] shadow-[0_0_12px_rgba(234,179,8,0.12)]'
+                                    : 'bg-white/[0.03] border-white/[0.05] text-white/25 hover:text-white/50 hover:bg-white/[0.05] hover:border-white/10'
+                            }`}
+                        >
+                            <Wind size={16} strokeWidth={2} />
+                            <span className="text-[9px] font-black uppercase tracking-wide leading-none">Viento</span>
+                            {tabCounts.wind > 0 && (
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
+                                    visibleTabs.includes('wind') ? 'bg-[#EAB308]/20 text-[#EAB308]' : 'bg-white/10 text-white/30'
+                                }`}>{tabCounts.wind}</span>
+                            )}
+                        </button>
+                        {/* Tránsito */}
+                        <button
+                            onClick={() => toggleTab('accident')}
+                            className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border transition-all duration-200 active:scale-95 ${
+                                visibleTabs.includes('accident')
+                                    ? 'bg-[#2563EB]/10 border-[#2563EB]/40 text-[#60A5FA] shadow-[0_0_12px_rgba(37,99,235,0.12)]'
+                                    : 'bg-white/[0.03] border-white/[0.05] text-white/25 hover:text-white/50 hover:bg-white/[0.05] hover:border-white/10'
+                            }`}
+                        >
+                            <Car size={16} strokeWidth={2} />
+                            <span className="text-[9px] font-black uppercase tracking-wide leading-none">Tránsito</span>
+                            {tabCounts.accident > 0 && (
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
+                                    visibleTabs.includes('accident') ? 'bg-[#2563EB]/20 text-[#60A5FA]' : 'bg-white/10 text-white/30'
+                                }`}>{tabCounts.accident}</span>
+                            )}
+                        </button>
+                        {/* Incendios */}
+                        <button
+                            onClick={() => toggleTab('fire')}
+                            className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border transition-all duration-200 active:scale-95 ${
+                                visibleTabs.includes('fire')
+                                    ? 'bg-[#DC2626]/10 border-[#DC2626]/40 text-[#F87171] shadow-[0_0_12px_rgba(220,38,38,0.12)]'
+                                    : 'bg-white/[0.03] border-white/[0.05] text-white/25 hover:text-white/50 hover:bg-white/[0.05] hover:border-white/10'
+                            }`}
+                        >
+                            <Flame size={16} strokeWidth={2} />
+                            <span className="text-[9px] font-black uppercase tracking-wide leading-none">Incendios</span>
+                            {tabCounts.fire > 0 && (
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
+                                    visibleTabs.includes('fire') ? 'bg-[#DC2626]/20 text-[#F87171]' : 'bg-white/10 text-white/30'
+                                }`}>{tabCounts.fire}</span>
+                            )}
+                        </button>
+                    </div>
+                </div>
+
+                {/* ══ MAIN FEED ══ */}
+                <div className="flex-1 min-h-0 flex flex-col">
+                    <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 custom-scrollbar space-y-2">
+
+                        {/* Premium Error Card */}
                         {premiumError && (
-                            <div className="mb-4 bg-gradient-to-br from-slate-900 to-[#002D62] p-5 rounded-2xl shadow-xl border border-white/10 text-white relative overflow-hidden">
-                                <div className="absolute -top-4 -right-4 text-white/5">
+                            <div className="mb-2 bg-gradient-to-br from-[#0a1628] to-[#001D40]/80 p-4 rounded-2xl border border-[#F28C28]/20 text-white relative overflow-hidden shadow-xl shadow-black/40">
+                                <div className="absolute -top-4 -right-4 text-[#F28C28]/5">
                                     <Database size={80} />
                                 </div>
                                 <div className="relative z-10">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <div className="bg-[#F28C28] p-1.5 rounded-lg">
-                                            <Calendar className="text-white" size={16} />
+                                        <div className="bg-[#F28C28]/15 border border-[#F28C28]/30 p-1.5 rounded-lg">
+                                            <Calendar className="text-[#F28C28]" size={14} />
                                         </div>
-                                        <h4 className="font-black text-sm uppercase tracking-tighter">Acceso Histórico</h4>
+                                        <h4 className="font-black text-xs uppercase tracking-widest text-[#F28C28]">Acceso Histórico</h4>
                                     </div>
-                                    <p className="text-xs text-gray-300 leading-relaxed mb-4">
-                                        La consulta de datos de más de 30 días requiere una suscripción <b>ZonData Premium</b>.
+                                    <p className="text-[11px] text-white/50 leading-relaxed mb-3">
+                                        La consulta de datos de más de 30 días requiere una suscripción <b className="text-white/70">ZonData Premium</b>.
                                     </p>
-                                    <button 
-                                        onClick={() => {
-                                            setModalView('pricing');
-                                            setPremiumModalOpen(true);
-                                        }}
-                                        className="w-full bg-[#F28C28] text-white py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[#F28C28]/20 hover:scale-[1.02] transition-transform"
+                                    <button
+                                        onClick={() => { setModalView('pricing'); setPremiumModalOpen(true); }}
+                                        className="w-full bg-gradient-to-r from-[#F28C28] to-[#d97a1d] text-white py-2 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-[#F28C28]/20 hover:shadow-[#F28C28]/30 hover:scale-[1.02] transition-all"
                                     >
                                         Subscribirse ahora
                                     </button>
@@ -424,167 +433,218 @@ const MapComponent = () => {
                             </div>
                         )}
 
-                        {/* Barra de estado del sistema — prominente */}
+                        {/* LED Sync Status Pill */}
                         {!premiumError && (
-                            <div className={`mb-4 rounded-xl border-2 p-3 transition-all ${
+                            <div className={`flex items-center justify-between px-3 py-2 rounded-xl border mb-1 transition-all ${
                                 loading
-                                    ? 'bg-amber-50 border-amber-300'
+                                    ? 'bg-amber-500/[0.07] border-amber-500/20'
                                     : incidents.length > 0
-                                        ? 'bg-emerald-50 border-emerald-300'
-                                        : 'bg-slate-50 border-slate-200'
+                                        ? 'bg-emerald-500/[0.07] border-emerald-500/20'
+                                        : 'bg-white/[0.03] border-white/[0.06]'
                             }`}>
-                            <div className="flex items-center justify-between w-full">
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                    {/* Punto de estado con anillo */}
-                                    <span className="relative flex-shrink-0 w-4 h-4">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="relative flex-shrink-0">
                                         {(isProcessingNew || loading || incidents.length > 0) && (
-                                            <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 animate-ping ${
-                                                isProcessingNew ? 'bg-blue-400' : loading ? 'bg-amber-400' : 'bg-emerald-500'
+                                            <span className={`absolute inset-0 rounded-full animate-ping opacity-60 ${
+                                                isProcessingNew ? 'bg-blue-400' : loading ? 'bg-amber-400' : 'bg-emerald-400'
                                             }`} />
                                         )}
-                                        <span className={`relative inline-flex w-4 h-4 rounded-full ${
-                                            isProcessingNew
-                                                ? 'bg-blue-500'
-                                                : loading
-                                                    ? 'bg-amber-400'
-                                                    : incidents.length > 0
-                                                        ? 'bg-emerald-500'
-                                                        : 'bg-slate-400'
+                                        <span className={`relative flex w-2 h-2 rounded-full ${
+                                            isProcessingNew ? 'bg-blue-400' : loading ? 'bg-amber-400' : incidents.length > 0 ? 'bg-emerald-400' : 'bg-white/20'
                                         }`} />
                                     </span>
-
                                     <div className="min-w-0">
-                                        {/* Línea 1: estado principal */}
-                                        <p className={`text-xs font-bold leading-tight ${
-                                            isProcessingNew
-                                                ? 'text-blue-700 animate-pulse'
-                                                : loading
-                                                    ? 'text-amber-700'
-                                                    : incidents.length > 0
-                                                        ? 'text-emerald-700'
-                                                        : 'text-slate-600'
+                                        <p className={`text-[10px] font-bold leading-tight truncate ${
+                                            isProcessingNew ? 'text-blue-400' : loading ? 'text-amber-400' : incidents.length > 0 ? 'text-emerald-400' : 'text-white/30'
                                         }`}>
                                             {isProcessingNew
-                                                ? '⚙ Procesando nueva entrada detectada...'
+                                                ? 'Procesando entrada nueva...'
                                                 : loading
-                                                    ? '⟳ Buscando nuevas entradas...'
+                                                    ? 'Buscando entradas...'
                                                     : incidents.length > 0
-                                                        ? `✓ ${incidents.length} incidente${incidents.length > 1 ? 's' : ''} detectado${incidents.length > 1 ? 's' : ''}`
-                                                        : '— Sin incidentes detectados'}
+                                                        ? `${incidents.length} incidente${incidents.length > 1 ? 's' : ''} detectado${incidents.length > 1 ? 's' : ''}`
+                                                        : 'Sin incidentes detectados'}
                                         </p>
-                                        {/* Línea 2: tiempo de sincronización */}
                                         {(lastSync && !loading && !isProcessingNew) && (
-                                            <p className="text-[10px] text-slate-400 mt-0.5">
-                                                Última actualización: {relativeTime(lastSync)}
-                                            </p>
+                                            <p className="text-[9px] text-white/20 mt-0.5">Sync: {relativeTime(lastSync)}</p>
                                         )}
                                     </div>
                                 </div>
-                                
-                                {/* Botón de Refresco Manual */}
                                 <button
                                     onClick={fetchIncidents}
                                     disabled={loading}
-                                    className={`p-1.5 rounded-lg transition-all hover:bg-black/5 active:scale-95 shrink-0 ${
-                                        loading 
-                                            ? 'text-amber-500 cursor-not-allowed' 
-                                            : 'text-slate-500 hover:text-[#002D62]'
+                                    className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
+                                        loading ? 'text-amber-400/50 cursor-not-allowed' : 'text-white/20 hover:text-white/60 hover:bg-white/[0.05] active:scale-90'
                                     }`}
-                                    title="Buscar nuevas entradas"
+                                    title="Recargar"
                                     aria-label="Buscar nuevas entradas"
                                 >
-                                    <RotateCw size={14} className={loading ? 'animate-spin' : ''} />
+                                    <RotateCw size={12} className={loading ? 'animate-spin' : ''} />
                                 </button>
                             </div>
-                        </div>
                         )}
 
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                                <h2 className="font-semibold text-gray-700 uppercase text-sm">Eventos Activos</h2>
-                                {loading && (
-                                    <div className="animate-spin text-[#F28C28]">
-                                        <Zap size={14} />
-                                    </div>
-                                )}
-                            </div>
-                            <span className="bg-[#002D62] text-white text-xs py-1 px-2 rounded-full font-bold">
+                        {/* Events Header */}
+                        <div className="flex items-center justify-between px-1 mb-1">
+                            <h2 className="text-[10px] font-black uppercase tracking-[0.18em] text-white/30">Eventos Activos</h2>
+                            <span className="bg-white/10 text-white/50 text-[9px] font-black py-0.5 px-2 rounded-full border border-white/10">
                                 {filteredIncidents.length}
                             </span>
                         </div>
-                        
-                        <div className="space-y-3">
+
+                        {/* Incident Cards — Dark Glass */}
+                        <div className="space-y-2">
                             {filteredIncidents.map(incident => {
-                                // Determinar color de la tarjeta según categoría
-                                let borderColor = '#002D62'; // Por defecto
-                                if (['arboles', 'corte', 'techo', 'viento', 'zonda'].includes(incident.category?.slug)) {
-                                    borderColor = '#EAB308'; // Viento: Amarillo
-                                } else if (['choque', 'vuelco', 'atropello'].includes(incident.category?.slug)) {
-                                    borderColor = '#2563EB'; // Accidente: Azul
-                                } else if (incident.category?.slug?.startsWith('incendio') || incident.category?.slug?.includes('siniestro')) {
-                                    borderColor = '#DC2626'; // Incendio: Rojo
+                                const slug = incident.category?.slug || '';
+                                const isWind = ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug.includes(k));
+                                const isAccident = ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k));
+                                const isFire = slug.includes('incendio') || slug.includes('siniestro');
+                                const isFatal = incident.is_fatal;
+
+                                let accentColor = 'rgba(255,255,255,0.12)';
+                                let glowColor = 'transparent';
+                                let accentText = 'text-white/40';
+                                if (isFatal) {
+                                    accentColor = 'rgba(239,68,68,0.25)';
+                                    glowColor = '0 0 16px rgba(239,68,68,0.12)';
+                                    accentText = 'text-red-400';
+                                } else if (isWind) {
+                                    accentColor = 'rgba(234,179,8,0.18)';
+                                    glowColor = '0 0 14px rgba(234,179,8,0.08)';
+                                    accentText = 'text-yellow-400';
+                                } else if (isAccident) {
+                                    accentColor = 'rgba(37,99,235,0.18)';
+                                    glowColor = '0 0 14px rgba(37,99,235,0.08)';
+                                    accentText = 'text-blue-400';
+                                } else if (isFire) {
+                                    accentColor = 'rgba(220,38,38,0.18)';
+                                    glowColor = '0 0 14px rgba(220,38,38,0.08)';
+                                    accentText = 'text-red-400';
                                 }
-                                
+
+                                const isSelected = selectedIncident?.id === incident.id;
+
+                                // Format event time
+                                let timeStr = '';
+                                if (incident.event_date) {
+                                    try {
+                                        const d = new Date(incident.event_date);
+                                        timeStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                                    } catch {}
+                                }
+
+                                const localityName = incident.locality?.name || incident.department?.name || '';
+
                                 return (
-                                    <div 
-                                        key={incident.id} 
+                                    <div
+                                        key={incident.id}
                                         onClick={() => setSelectedIncident(incident)}
-                                        className={`bg-white p-3 rounded shadow-sm border-l-4 relative cursor-pointer transition-all hover:bg-gray-50 active:scale-[0.98] ${selectedIncident?.id === incident.id ? 'ring-2 ring-[#002D62] ring-inset' : ''}`} 
-                                        style={{ borderColor }}
+                                        className={`relative rounded-2xl border cursor-pointer transition-all duration-200 p-3.5 ${
+                                            isSelected
+                                                ? 'border-white/25 bg-white/[0.09] scale-[1.01] shadow-lg'
+                                                : 'border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/15 hover:-translate-y-0.5 active:scale-[0.98]'
+                                        }`}
+                                        style={{
+                                            boxShadow: isSelected ? `0 0 0 1px ${accentColor}, ${glowColor}` : glowColor
+                                        }}
                                     >
-                                        <h3 className="font-bold text-[#002D62] text-sm leading-tight">{incident.title}</h3>
+                                        {/* Top row: category accent bar + time + locality */}
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-1.5">
+                                                {/* Color accent dot */}
+                                                <span
+                                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                                    style={{ background: accentColor.replace('0.18', '0.9').replace('0.25', '1') }}
+                                                />
+                                                <span className={`text-[9px] font-black uppercase tracking-widest ${accentText}`}>
+                                                    {isFatal ? 'Fatal' : isWind ? 'Viento' : isAccident ? 'Tránsito' : isFire ? 'Incendio' : 'Evento'}
+                                                </span>
+                                                {isFatal && <Skull size={9} className="text-red-400" />}
+                                            </div>
+                                            <div className="flex items-center gap-1 text-white/25">
+                                                {timeStr && (
+                                                    <span className="flex items-center gap-0.5 text-[9px]">
+                                                        <Clock size={9} />
+                                                        {timeStr}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Title */}
+                                        <h3 className="text-white/85 font-bold text-[12px] leading-tight mb-2">
+                                            {incident.title}
+                                        </h3>
+
+                                        {/* Bottom row: locality + precision badge */}
+                                        <div className="flex items-center justify-between gap-2">
+                                            {localityName && (
+                                                <span className="flex items-center gap-1 text-[9px] text-white/30 font-semibold truncate">
+                                                    <MapPin size={9} className="flex-shrink-0" />
+                                                    {localityName}
+                                                </span>
+                                            )}
+                                            {incident.location_type === 'ROOFTOP' && (
+                                                <span className="text-[8px] font-black text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap ml-auto">Exacto</span>
+                                            )}
+                                            {incident.location_type === 'RANGE_INTERPOLATED' && (
+                                                <span className="text-[8px] font-black text-emerald-300/70 bg-emerald-500/[0.07] border border-emerald-500/15 px-1.5 py-0.5 rounded-full whitespace-nowrap ml-auto">Calle</span>
+                                            )}
+                                            {(incident.location_type === 'GEOMETRIC_CENTER' && incident.source !== 'fallback') && (
+                                                <span className="text-[8px] font-black text-amber-400/70 bg-amber-500/[0.07] border border-amber-500/15 px-1.5 py-0.5 rounded-full whitespace-nowrap ml-auto">~Aprox</span>
+                                            )}
+                                            {(!incident.location_type || incident.source === 'fallback') && (
+                                                <span className="text-[8px] font-black text-white/20 bg-white/[0.04] border border-white/10 px-1.5 py-0.5 rounded-full whitespace-nowrap ml-auto">Ref.</span>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
+
+                        {/* Empty State */}
+                        {filteredIncidents.length === 0 && !loading && !premiumError && (
+                            <div className="text-center py-10">
+                                <div className="w-10 h-10 rounded-full bg-white/[0.04] border border-white/[0.07] flex items-center justify-center mx-auto mb-3">
+                                    <CheckCircle size={18} className="text-white/15" />
+                                </div>
+                                <p className="text-[11px] text-white/25 font-semibold">Sin incidentes</p>
+                                <p className="text-[10px] text-white/15 mt-0.5">para la fecha seleccionada</p>
+                            </div>
+                        )}
                     </div>
 
-                    {/* CTA Dataset Completo */}
-                    <div className="mt-2.5 flex flex-col gap-2">
-                        {/* Botón Principal: Acceso Premium */}
-                        <button 
-                            className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62] to-[#001D40] p-3 rounded-xl shadow-lg border border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                            onClick={() => {
-                                window.location.href = '/dashboard_premium';
-                            }}
+                    {/* ══ BOTTOM CTAs ══ */}
+                    <div className="px-3 py-3 border-t border-white/[0.06] flex flex-col gap-2">
+                        {/* Premium CTA */}
+                        <button
+                            className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62]/80 to-[#001228]/90 border border-[#F28C28]/20 hover:border-[#F28C28]/40 p-3 rounded-xl shadow-xl shadow-black/40 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                            onClick={() => { window.location.href = '/dashboard_premium'; }}
                         >
-                            <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Database size={40} />
+                            <div className="absolute inset-0 bg-gradient-to-r from-[#F28C28]/0 via-[#F28C28]/5 to-[#F28C28]/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                            <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <Database size={36} className="text-[#F28C28]" />
                             </div>
                             <div className="relative z-10 flex items-center justify-between w-full gap-2">
                                 <div className="flex flex-col items-start text-left">
-                                    <span className="text-[9px] font-black text-[#F28C28] uppercase tracking-[0.15em] leading-none mb-1">Acceso Premium</span>
-                                    <h4 className="text-white font-bold text-xs leading-none">Dataset Completo</h4>
+                                    <span className="text-[8px] font-black text-[#F28C28]/70 uppercase tracking-[0.18em] leading-none mb-1">Acceso Premium</span>
+                                    <h4 className="text-white/80 font-bold text-[11px] leading-none">Dataset Completo</h4>
                                 </div>
-                                <div className="flex items-center text-white text-[10px] font-black uppercase tracking-wider bg-[#F28C28] py-2 px-2.5 rounded-lg shadow-md shrink-0">
-                                    Suscribirse ahora
+                                <div className="flex items-center text-white text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-[#F28C28] to-[#d97a1d] py-1.5 px-2.5 rounded-lg shadow-md shadow-[#F28C28]/20 shrink-0 whitespace-nowrap">
+                                    Suscribirse
                                 </div>
                             </div>
                         </button>
 
-                        {/* Botón Secundario: Acceso Público / Estadísticas Gratuitas */}
+                        {/* Public Dashboard CTA */}
                         <button
-                            onClick={() => {
-                                window.location.href = '/dashboard_public';
-                            }}
-                            className="w-full bg-slate-100 hover:bg-slate-200 text-[#002D62] font-black py-2 rounded-xl text-[10px] uppercase tracking-wider border border-slate-200 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                            onClick={() => { window.location.href = '/dashboard_public'; }}
+                            className="w-full bg-white/[0.04] hover:bg-white/[0.08] text-white/50 hover:text-white/70 font-bold py-2 rounded-xl text-[10px] uppercase tracking-wider border border-white/[0.07] hover:border-white/15 transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                            <BarChart2 size={12} className="text-[#F28C28]" />
-                            Ver Estadísticas Públicas (Gratuito)
+                            <BarChart2 size={12} className="text-[#F28C28]/60" />
+                            Estadísticas Públicas
                         </button>
                     </div>
-                </div>
-
-                {/* Botón para ocultar en la parte inferior del navbar */}
-                <div className="p-3 bg-white border-t border-gray-100 flex justify-center">
-                    <button 
-                        onClick={() => setSidebarOpen(false)}
-                        className="p-2.5 bg-gray-100 hover:bg-gray-200 text-[#002D62] rounded-full transition-colors flex items-center justify-center shadow-sm"
-                        aria-label="Plegar panel"
-                        title="Plegar panel"
-                    >
-                        <ChevronLeft size={20} />
-                    </button>
                 </div>
             </div>
 
