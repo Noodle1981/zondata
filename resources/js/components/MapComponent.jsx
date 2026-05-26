@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -147,6 +147,21 @@ const MapComponent = () => {
     const [premiumModalOpen, setPremiumModalOpen] = useState(false);
     const [modalView, setModalView] = useState('pricing'); // 'pricing' or 'dashboard'
     const [activeDashboardSection, setActiveDashboardSection] = useState('general'); // 'general', 'traffic', 'fire', 'wind'
+    const [provinceGeoJSON, setProvinceGeoJSON] = useState(null);
+    const [departmentsGeoJSON, setDepartmentsGeoJSON] = useState(null);
+
+    useEffect(() => {
+        // Fetch geojson boundaries
+        fetch('/geojson/san_juan.json')
+            .then(res => res.json())
+            .then(data => setProvinceGeoJSON(data))
+            .catch(err => console.error("Error loading province geojson:", err));
+            
+        fetch('/geojson/departamentos-san_juan.json')
+            .then(res => res.json())
+            .then(data => setDepartmentsGeoJSON(data))
+            .catch(err => console.error("Error loading departments geojson:", err));
+    }, []);
 
     const toggleTab = (tab) => {
         setVisibleTabs(prev => {
@@ -584,6 +599,33 @@ const MapComponent = () => {
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                     />
+                    
+                    {/* Capas GeoJSON de San Juan */}
+                    {provinceGeoJSON && (
+                        <GeoJSON 
+                            data={provinceGeoJSON} 
+                            interactive={false}
+                            style={{
+                                color: '#002D62',
+                                weight: 3,
+                                opacity: 1,
+                                fillOpacity: 0
+                            }}
+                        />
+                    )}
+                    {departmentsGeoJSON && (
+                        <GeoJSON 
+                            data={departmentsGeoJSON} 
+                            interactive={false}
+                            style={{
+                                color: '#002D62',
+                                weight: 1,
+                                opacity: 0.5,
+                                fillOpacity: 0,
+                                dashArray: '5, 5'
+                            }}
+                        />
+                    )}
                     
                     {filteredIncidents.map(incident => (
                         <Marker 
