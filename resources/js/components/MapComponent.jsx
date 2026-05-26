@@ -305,10 +305,15 @@ const MapComponent = () => {
                 style={{ zIndex: 999 }}
             >
                 {/* ══ HEADER ══ Logo + Close */}
-                <div className="px-4 pt-4 pb-3 border-b border-white/[0.06] flex items-center justify-between gap-3">
-                    {/* Logo framed in a glass card */}
-                    <div className="flex-1 bg-white/[0.06] border border-white/[0.09] rounded-xl px-3 py-2 flex items-center justify-center">
-                        <img src="/images/logo.jpeg" alt="ZonData Logo" className="h-7 w-auto object-contain brightness-110" />
+                <div className="relative px-4 pt-5 pb-4 flex items-center justify-between gap-3">
+                    {/* Logo — mix-blend-mode:screen removes dark background */}
+                    <div className="flex-1 flex items-center justify-start">
+                        <img
+                            src="/images/logo.png"
+                            alt="ZonData Logo"
+                            className="h-12 w-auto object-contain"
+                            style={{ mixBlendMode: 'screen', filter: 'brightness(1.15) contrast(1.05)' }}
+                        />
                     </div>
                     <button
                         onClick={() => setSidebarOpen(false)}
@@ -317,6 +322,8 @@ const MapComponent = () => {
                     >
                         <X size={16} strokeWidth={2.5} />
                     </button>
+                    {/* Brand accent line */}
+                    <div className="absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-[#F28C28]/30 via-white/[0.06] to-transparent" />
                 </div>
 
                 {/* ══ DATE PICKER ══ */}
@@ -662,27 +669,27 @@ const MapComponent = () => {
                     
                     {/* Capas GeoJSON de San Juan */}
                     {provinceGeoJSON && (
-                        <GeoJSON 
-                            data={provinceGeoJSON} 
+                        <GeoJSON
+                            data={provinceGeoJSON}
                             interactive={false}
                             style={{
                                 color: '#002D62',
-                                weight: 3,
-                                opacity: 1,
+                                weight: 1.5,
+                                opacity: 0.55,
                                 fillOpacity: 0
                             }}
                         />
                     )}
                     {departmentsGeoJSON && (
-                        <GeoJSON 
-                            data={departmentsGeoJSON} 
+                        <GeoJSON
+                            data={departmentsGeoJSON}
                             interactive={false}
                             style={{
                                 color: '#002D62',
-                                weight: 1,
-                                opacity: 0.5,
+                                weight: 0.8,
+                                opacity: 0.3,
                                 fillOpacity: 0,
-                                dashArray: '5, 5'
+                                dashArray: '6, 8'
                             }}
                         />
                     )}
