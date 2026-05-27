@@ -416,13 +416,45 @@ class IncidentController extends Controller
                 ->contains(fn($word) => str_contains(strtolower($validated['etiqueta']), $word));
 
             if ($isAccident) {
-                // Buscamos un incidente en un radio de ~1km (0.01 grados) en los últimos 15 días
-                // que sea de la misma zona pero que NO sea fatal todavía.
-                $similarIncident = Incident::where('is_fatal', '!=', 1)
-                    ->where('event_date', '>=', now()->subDays(15))
-                    ->whereBetween('latitude', [$validated['latitud'] - 0.01, $validated['latitud'] + 0.01])
-                    ->whereBetween('longitude', [$validated['longitud'] - 0.01, $validated['longitud'] + 0.01])
-                    ->first();
+                // Extraer nombres de víctimas del reporte actual para la búsqueda cruzada amplia
+                $newExtracted = $this->extractProperNouns(($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? ''));
+                $victimNames = !empty($newExtracted['full_names']) ? implode(', ', $newExtracted['full_names']) : null;
+                $namesToSearch = !empty($newExtracted['full_names']) ? $newExtracted['full_names'] : [];
+
+                $similarIncident = null;
+
+                // 1. Primero intentar buscar por coincidencia de nombre de víctima en una ventana amplia de 45 días
+                if (!empty($namesToSearch)) {
+                    $candidates = Incident::where('is_fatal', '!=', 1)
+                        ->where('event_date', '>=', now()->subDays(45))
+                        ->get();
+
+                    foreach ($candidates as $candidate) {
+                        $candidateNames = array_map('trim', explode(',', $candidate->victim_names ?? ''));
+                        foreach ($namesToSearch as $name) {
+                            $nameLower = mb_strtolower($name, 'UTF-8');
+                            foreach ($candidateNames as $cName) {
+                                $cNameLower = mb_strtolower($cName, 'UTF-8');
+                                if (!empty($nameLower) && !empty($cNameLower)) {
+                                    // Coincidencia exacta o contenida (ej: "Melani" con "Melani Desseff")
+                                    if ($nameLower === $cNameLower || str_contains($cNameLower, $nameLower) || str_contains($nameLower, $cNameLower)) {
+                                        $similarIncident = $candidate;
+                                        break 2;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Si no se encontró coincidencia por nombre de víctima, usar el fallback geográfico tradicional de 15 días
+                if (!$similarIncident) {
+                    $similarIncident = Incident::where('is_fatal', '!=', 1)
+                        ->where('event_date', '>=', now()->subDays(15))
+                        ->whereBetween('latitude', [$validated['latitud'] - 0.01, $validated['latitud'] + 0.01])
+                        ->whereBetween('longitude', [$validated['longitud'] - 0.01, $validated['longitud'] + 0.01])
+                        ->first();
+                }
 
                 if ($similarIncident) {
                     $similarIncident->update([
@@ -431,6 +463,34 @@ class IncidentController extends Controller
                         'source_publish_date' => $validated['source_publish_date'] ?? now(),
                         'updated_at' => now(),
                     ]);
+
+                    // Si hay nuevos nombres detectados que no estaban en el original, anexarlos
+                    if (!empty($namesToSearch)) {
+                        $existingNames = array_map('trim', explode(',', $similarIncident->victim_names ?? ''));
+                        $existingNames = array_filter($existingNames);
+                        $mergedNames = $existingNames;
+                        foreach ($namesToSearch as $newName) {
+                            $alreadyExists = false;
+                            $newNameLower = mb_strtolower($newName, 'UTF-8');
+                            foreach ($mergedNames as $key => $existingName) {
+                                $existingNameLower = mb_strtolower($existingName, 'UTF-8');
+                                if ($existingNameLower === $newNameLower || str_contains($newNameLower, $existingNameLower)) {
+                                    $mergedNames[$key] = $newName; 
+                                    $alreadyExists = true;
+                                    break;
+                                } elseif (str_contains($existingNameLower, $newNameLower)) {
+                                    $alreadyExists = true;
+                                    break;
+                                }
+                            }
+                            if (!$alreadyExists) {
+                                $mergedNames[] = $newName;
+                            }
+                        }
+                        $similarIncident->update([
+                            'victim_names' => !empty($mergedNames) ? implode(', ', array_unique($mergedNames)) : null
+                        ]);
+                    }
 
                     // Check if event was yesterday or older
                     $eventDateObj = \Carbon\Carbon::parse($similarIncident->event_date);
@@ -450,6 +510,7 @@ class IncidentController extends Controller
                 }
             }
         }
+
         // ---------------------------------------------------------
 
         // --- Lógica de Duplicados Cercanos (Fuzzy) y Fusión Inteligente ---

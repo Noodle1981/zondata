@@ -595,9 +595,43 @@ def sanitize_location_text(text, rule=None):
         cleaned = re.sub(r'hospital\s+rawson', '', cleaned, flags=re.IGNORECASE)
     return cleaned
 
+def _is_used_as_street_name(name, text):
+    """
+    Verifica si un nombre geográfico (departamento/localidad) está siendo usado
+    como nombre de calle/avenida/ruta en el texto (ej: "calle Sarmiento", "Av. Rawson").
+    Si está precedido por un prefijo vial, NO debe usarse como contexto geográfico.
+    """
+    # Prefijos viales que indican que el nombre es una calle, no una zona geográfica
+    street_prefixes = r'(?:[Cc]alle[s]?\s+|[Aa]v(?:enida)?\.?\s+|[Rr]uta\s+)'
+    pattern = street_prefixes + re.escape(name) + r'\b'
+    return bool(re.search(pattern, text, re.IGNORECASE))
+
+def _has_non_street_occurrence(name, text):
+    """
+    Verifica si el nombre aparece en el texto en un contexto que NO sea de calle.
+    Por ejemplo, "en Albardón" o "ocurrió en Sarmiento" (sin prefijo vial).
+    Retorna True si hay al menos una ocurrencia que no sea nombre de calle.
+    """
+    # Buscar todas las ocurrencias del nombre
+    all_matches = list(re.finditer(r'\b' + re.escape(name) + r'\b', text, re.IGNORECASE))
+    if not all_matches:
+        return False
+    
+    street_prefixes = r'(?:[Cc]alle[s]?\s+|[Aa]v(?:enida)?\.?\s+|[Rr]uta\s+)'
+    for m in all_matches:
+        # Tomar un fragmento antes del match para verificar si tiene prefijo vial
+        start = max(0, m.start() - 20)
+        preceding = text[start:m.start()]
+        if not re.search(street_prefixes + r'$', preceding, re.IGNORECASE):
+            return True  # Esta ocurrencia NO es nombre de calle
+    
+    return False  # Todas las ocurrencias son nombres de calle
+
 def get_hierarchical_context(text, rule=None):
     """
     Busca contexto siguiendo la prioridad: Localidad -> Departamento -> Provincia
+    Ignora nombres que aparecen exclusivamente como nombres de calle/avenida/ruta
+    (ej: "calle Sarmiento" no debe interpretarse como departamento Sarmiento).
     """
     text = sanitize_location_text(text, rule)
     # 1. Prioridad: Localidad (Máxima precisión con su departamento)
@@ -619,12 +653,19 @@ def get_hierarchical_context(text, rule=None):
                 if not any(fn in text.lower() for fn in full_names_to_check):
                     continue
             
+            # Si este nombre SOLO aparece como nombre de calle, no usarlo como contexto
+            if _is_used_as_street_name(loc, text) and not _has_non_street_occurrence(loc, text):
+                continue
+            
             return f"{LOCALIDADES_CONTEXT[loc]}, San Juan, Argentina"
 
     # 2. Prioridad: Departamento
     for dept in DEPARTAMENTOS:
         pattern = r'\b' + re.escape(dept) + r'\b'
         if re.search(pattern, text, re.IGNORECASE):
+            # Si este nombre SOLO aparece como nombre de calle, no usarlo como contexto
+            if _is_used_as_street_name(dept, text) and not _has_non_street_occurrence(dept, text):
+                continue
             return f"{dept}, San Juan, Argentina"
 
     # 3. Fallback dinámico: buscar en la DB si hay algún token del texto que coincida
@@ -632,6 +673,9 @@ def get_hierarchical_context(text, rule=None):
     tokens = re.findall(r'[A-ZÁÉÍÓÚ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚ][a-záéíóúñ]+)*', text)
     for token in tokens:
         if len(token) < 4:
+            continue
+        # Si este token SOLO aparece como nombre de calle, no usarlo como contexto
+        if _is_used_as_street_name(token, text) and not _has_non_street_occurrence(token, text):
             continue
         db_result = lookup_locality_in_db(token)
         if db_result:
@@ -800,16 +844,27 @@ def fetch_article_text(url):
             # Eliminar contenedores comunes de barras laterales, comentarios, redes sociales, etc.
             html_clean = re.sub(r'<div[^>]*(?:class|id)="[^"]*(?:sidebar|menu|nav|aside|header|footer|comments|social|share|relacionad|destacad)[^"]*"[^>]*>.*?</div>', '', html_clean, flags=re.DOTALL | re.IGNORECASE)
             
+            content_parts = []
+            # Meta description
+            meta_desc = re.search(r'<meta\s+name=["\']description["\']\s+content=["\'](.*?)["\']', html_content, re.IGNORECASE)
+            if meta_desc: content_parts.append(clean_html(meta_desc.group(1)))
+
+            # Copetes / Subtítulos
+            copete_matches = re.findall(r'<(?:div|p|h2)[^>]*class=["\'](?:noticia-copete|noticia-description|article-description|subtitulo|copete|lead)[^"\']*["\'][^>]*>(.*?)</(?:div|p|h2)>', html_clean, re.DOTALL | re.IGNORECASE)
+            for c in copete_matches: content_parts.append(clean_html(c))
+
+            # Párrafos
             p_matches = re.findall(r'<p[^>]*>(.*?)</p>', html_clean, re.DOTALL)
-            paragraphs = []
             for p in p_matches:
                 p_clean = clean_html(p)
                 if len(p_clean) > 30 and not any(x in p_clean.lower() for x in ["copyright", "todos los derechos", "comercial:", "términos y condiciones"]):
-                    paragraphs.append(p_clean)
-            return "\n".join(paragraphs)
+                    content_parts.append(p_clean)
+
+            return "\n".join(content_parts)
     except Exception as e:
         print(f"[WARNING] No se pudo obtener el cuerpo del artículo desde {url}: {e}")
     return ""
+
 
 def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", rule=None, pub_date_str=None):
     title = clean_html(title)
@@ -979,10 +1034,24 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
     # Persistir el hash ANTES de retornar para que futuras corridas no re-geocodifiquen esta noticia
     save_content_hash(content_hash, link or '')
 
+    # Concatenar la descripción corta y el cuerpo completo para que la API de Laravel 
+    # tenga todo el texto disponible para la extracción de nombres de víctimas y análisis.
+    full_description = description if description else ""
+    if body_text:
+        # Evitar duplicar el copete si ya está al inicio del cuerpo
+        cleaned_body = body_text.strip()
+        if full_description and cleaned_body.startswith(full_description[:100]):
+            full_description = cleaned_body
+        else:
+            full_description = (full_description + "\n\n" + cleaned_body).strip()
+            
+    if not full_description:
+        full_description = "Sin descripción."
+
     return {
         "etiqueta": detected_category,
         "titulo": title[:250],
-        "descripcion": description[:500] if description else "Sin descripción.",
+        "descripcion": full_description,
         "latitud": lat,
         "longitud": lon,
         "is_approximate": is_approx,
@@ -995,6 +1064,7 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         "source_publish_date": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
         "verificado": False
     }
+
 
 def send_to_api(incident_data):
     try:
