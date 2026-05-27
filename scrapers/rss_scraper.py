@@ -880,13 +880,24 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         return None
 
     text_to_search = (title + " " + description).lower()
-    # Evitar falsos positivos de "fuego" en palabras que no refieren a un incendio (ej. matafuegos)
+    # Evitar falsos positivos de "fuego" y usos figurativos de "impacto" / "giro"
     text_to_search = text_to_search.replace("matafuegos", "").replace("matafuego", "")
+    
+    # Exclusión de modismos y falsos positivos de "impacto" (que disparan contexto de accidente)
+    for term in [
+        "fuerte impacto", "gran impacto", "alto impacto", "bajo impacto", 
+        "impacto economico", "impacto social", "impacto politico", "impacto ambiental",
+        "impacto de la noticia", "causo impacto", "genero impacto", "provoco impacto",
+        "dieron un giro", "giro inesperado", "giro en la investigacion", "giro en la causa"
+    ]:
+        text_to_search = text_to_search.replace(term, "")
+        
     if any(black_word in text_to_search for black_word in BLACKLIST_KEYWORDS):
         return None
     if rule and rule.get("ignore_terms"):
         if any(term in text_to_search for term in rule["ignore_terms"]):
             return None
+
 
     # ─── FASE 1: Pre-filtro por título/descripción ────────────────────────────
     # Si el título/descripción no contiene ninguna señal relevante (accidente,

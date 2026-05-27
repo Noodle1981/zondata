@@ -531,9 +531,17 @@ class IncidentController extends Controller
         $fuzzyDuplicate = null;
         foreach ($candidates as $candidate) {
             // 1. Verificar cercanía por coordenadas (~1.5km en grados de latitud/longitud)
-            $latDiff = abs($candidate->latitude - $validated['latitud']);
-            $lngDiff = abs($candidate->longitude - $validated['longitud']);
-            $isClose = ($latDiff <= 0.015 && $lngDiff <= 0.015);
+            // IMPORTANTE: NO permitir fusión por distancia si alguno de los dos reportes es aproximado (is_approximate = 1),
+            // ya que los fallbacks geográficos generales colisionarían siempre en el mismo punto de la cabecera departamental.
+            $isClose = false;
+            $existingIsApprox = (bool) $candidate->is_approximate;
+            $newIsApprox = (bool) ($validated['is_approximate'] ?? false);
+
+            if (!$existingIsApprox && !$newIsApprox) {
+                $latDiff = abs($candidate->latitude - $validated['latitud']);
+                $lngDiff = abs($candidate->longitude - $validated['longitud']);
+                $isClose = ($latDiff <= 0.015 && $lngDiff <= 0.015);
+            }
 
             // 2. Verificar si comparten nombres propios específicos (víctimas/detalles únicos)
             $text1 = ($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? '');
@@ -545,6 +553,7 @@ class IncidentController extends Controller
                 break;
             }
         }
+
 
         if ($fuzzyDuplicate) {
             $existingHasLocality = !empty($fuzzyDuplicate->locality_id);
