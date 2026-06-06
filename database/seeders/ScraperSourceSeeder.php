@@ -154,7 +154,7 @@ class ScraperSourceSeeder extends Seeder
                 'ignore_terms'         => [],
                 'deep_fetch'           => true,
                 'duplicate_check'      => true,
-                'active'               => true,
+                'active'               => false, // Desactivado: El feed RSS original ya no está disponible (retorna 404)
                 'priority'             => 8,
                 'fallback_context'     => 'San Juan, Argentina',
             ],
@@ -165,7 +165,7 @@ class ScraperSourceSeeder extends Seeder
                 'name'                 => 'Diario Móvil',
                 'type'                 => 'html',
                 'scrape_urls'          => ['https://diariomovil.info/categoria/4/san-juan'],
-                'article_selector'     => '<div[^>]*class=\"[^\"]*post[^\"]*\"[^>]*>.*?<a[^>]*href=\"([^\"]+)\"[^>]*>.*?<h[23][^>]*class=\"[^\"]*titulo[^\"]*\"[^>]*>(.*?)</h[23]>.*?<div[^>]*class=\"[^\"]*resumen[^\"]*\"[^>]*>(.*?)</div>',
+                'article_selector'     => '<article[^>]*class=\"[^\"]*post[^\"]*\"[^>]*>.*?<a[^>]*href=\"([^\"]+)\"[^>]*>.*?<h[23][^>]*class=\"[^\"]*titulo[^\"]*\"[^>]*>(.*?)</h[23]>.*?<div[^>]*class=\"[^\"]*detalle[^\"]*\"[^>]*>(.*?)</div>',
                 'sanitize_exclusions'  => ['Hospital Rawson'],
                 'ignore_terms'         => [],
                 'deep_fetch'           => true,

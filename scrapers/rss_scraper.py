@@ -53,6 +53,10 @@ HEADERS = {
 
 API_URL = get_env_variable("APP_URL", "http://127.0.0.1:8000") + "/api/incidents"
 
+# Contadores globales de llamadas a APIs en la ejecución actual para límites de seguridad
+gemini_calls_in_run = 0
+google_maps_calls_in_run = 0
+
 from load_rules import load_rules, get_source_rule
 RULES = load_rules()
 # ─── Palabras de pre-filtro de TÍTULO ───────────────────────────────────────
@@ -483,6 +487,79 @@ MEDIA_NAMES = {
 def is_within_bounds(lat, lon):
     return BOUNDING_BOX[0] <= lat <= BOUNDING_BOX[1] and BOUNDING_BOX[2] <= lon <= BOUNDING_BOX[3]
 
+def extract_location_with_gemini(title, description, body_text):
+    """
+    Analiza la noticia con Gemini 2.5 Flash y extrae información estructurada:
+    location_query, is_approximate, is_fatal, category.
+    """
+    gemini_key = get_env_variable("GEMINI_API_KEY")
+    if not gemini_key:
+        return None
+
+    global gemini_calls_in_run
+    max_calls = int(get_env_variable("MAX_GEMINI_CALLS_PER_RUN", "30"))
+    if gemini_calls_in_run >= max_calls:
+        print(f"[GEMINI][LIMIT] Se alcanzó el límite de {max_calls} llamadas por ciclo. Omitiendo Gemini para esta noticia.")
+        return None
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
+    headers = {"Content-Type": "application/json"}
+    
+    prompt = f"""Analiza la siguiente noticia de la provincia de San Juan, Argentina, y extrae la información solicitada de forma estructurada.
+
+Título: {title}
+Descripción: {description}
+Cuerpo: {body_text}"""
+
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "OBJECT",
+                "properties": {
+                    "location_query": {
+                        "type": "STRING",
+                        "description": "Una consulta de dirección limpia y específica en San Juan, Argentina. Ej: 'Avenida Libertador & San Miguel' o 'Ruta 40 y Calle 9' o 'Hospital Rawson'. Si solo se menciona un departamento general sin calles ni referencias de altura, devolver el nombre del departamento/localidad."
+                    },
+                    "is_approximate": {
+                        "type": "BOOLEAN",
+                        "description": "true si la dirección es aproximada (solo se conoce el departamento, localidad o barrio general sin calles específicas). false si la dirección es exacta (se menciona una calle y altura, intersección de calles, o un lugar muy específico como un hospital o plaza)."
+                    },
+                    "is_fatal": {
+                        "type": "BOOLEAN",
+                        "description": "true si la noticia indica claramente que hubo al menos una víctima fatal o fallecido en el lugar. false en caso contrario."
+                    },
+                    "category": {
+                        "type": "STRING",
+                        "enum": ["choque", "vuelco", "atropello", "incendio-vivienda", "incendio-pastizales", "incendio-vehiculo", "arboles", "corte", "techo", "incendio", "accidente", "desconocido"],
+                        "description": "La categoría del incidente."
+                    }
+                },
+                "required": ["location_query", "is_approximate", "is_fatal", "category"]
+            }
+        }
+    }
+
+    try:
+        print(f"[GEMINI] Analizando noticia: '{title[:60]}...'")
+        response = requests.post(url, headers=headers, json=payload, timeout=12)
+        if response.status_code == 200:
+            gemini_calls_in_run += 1
+            data = response.json()
+            text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+            result = json.loads(text)
+            print(f"[GEMINI] Éxito. Extracción: {result}")
+            return result
+        else:
+            print(f"[GEMINI][WARNING] HTTP {response.status_code} al consultar Gemini: {response.text}")
+    except Exception as e:
+        print(f"[GEMINI][ERROR] Excepción al consultar Gemini: {e}")
+    
+    return None
+
 def resolve_geocode_google(query_str):
     """
     Geocodifica usando Google Geocoding API como fallback de Nominatim.
@@ -496,6 +573,12 @@ def resolve_geocode_google(query_str):
     """
     api_key = get_env_variable("GOOGLE_MAPS_API_KEY")
     if not api_key:
+        return None
+
+    global google_maps_calls_in_run
+    max_calls = int(get_env_variable("MAX_GOOGLE_MAPS_CALLS_PER_RUN", "30"))
+    if google_maps_calls_in_run >= max_calls:
+        print(f"[GOOGLE][LIMIT] Se alcanzó el límite de {max_calls} llamadas por ciclo. Omitiendo Google Maps para esta noticia.")
         return None
 
     print(f"[GOOGLE] Consultando geocoding para: '{query_str}'")
@@ -514,6 +597,7 @@ def resolve_geocode_google(query_str):
             status = data.get("status")
 
             if status == "OK" and data.get("results"):
+                google_maps_calls_in_run += 1
                 result = data["results"][0]
                 geometry = result.get("geometry", {})
                 location = geometry.get("location", {})
@@ -929,100 +1013,44 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
             text_to_search += " " + body_text.lower()
 
     # ─── FASE 4: Geocodificación con texto completo ────────────────────────────
-    res = geocoding_funnel(title, rule)
-    if res and not res[2]:
-        lat, lon, is_approx, source, loc_type = res
-    else:
-        full_res = geocoding_funnel(title + " " + description, rule)
-        if full_res:
-            lat, lon, is_approx, source, loc_type = full_res
-        else:
-            lat, lon, is_approx, source, loc_type = None, None, True, 'fallback', 'APPROXIMATE'
+    gemini_res = None
+    gemini_key = get_env_variable("GEMINI_API_KEY")
+    if gemini_key:
+        gemini_res = extract_location_with_gemini(title, description, body_text)
 
-    # Intentar mejorar coordenadas con el cuerpo si aún son aproximadas
-    if body_text and (is_approx or lat is None):
-        deep_res = geocoding_funnel(body_text, rule)
-        if deep_res:
-            d_lat, d_lon, d_is_approx, d_source, d_loc_type = deep_res
-            if not d_is_approx or lat is None:
-                lat, lon, is_approx, source, loc_type = d_lat, d_lon, d_is_approx, d_source, d_loc_type
-
-    # ─── FASE 5: Detección de categoría ────────────────────────────────────────
-    # Usamos title_desc_combined para verificar el CONTEXTO principal (evita falsos
-    # positivos si el cuerpo menciona "impactó" en una nota de un puma, por ej).
-    # Usamos text_to_search (que incluye el cuerpo) para buscar detalles en el MAPPING.
-    detected_category = None
-    
-    if any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_WIND):
-        for slug, keywords in WIND_MAPPING.items():
-            if any(has_keyword_match(text_to_search, kw) for kw in keywords):
-                detected_category = slug
-                break
-                
-    if not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_FIRE):
-        is_firearm = any(x in text_to_search for x in [
-            "arma de fuego", "armas de fuego", "disparó", "disparo", "dispararon",
-            "balearon", "balear", "herido de bala", "herida de bala", "impactos de bala", 
-            "recibio disparos", "recibió disparos", "tiros", "disparos", "balacera", "balazo"
-        ])
-        is_animal = "llamas" in text_to_search and any(a in text_to_search for a in ["animal", "aves", "guanaco", "fauna", "especie", "ejemplar"])
-        if not (is_firearm or is_animal):
-            detected_category = "incendio"
-            for slug, fire_kws in FIRE_MAPPING.items():
-                if any(has_keyword_match(text_to_search, kw) for kw in fire_kws):
-                    detected_category = slug
-                    break
-                    
-    if not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_ACCIDENT):
-        # Guardia contra falsos positivos: incidentes de violencia armada, disparos o asaltos
-        # que no son siniestros viales sino delitos policiales o crímenes de sangre.
-        is_armed_violence = any(x in text_to_search for x in [
-            "balearon", "balear", "herido de bala", "herida de bala", "impactos de bala", 
-            "recibio disparos", "recibió disparos", "tiros", "disparos", "apuñalaron", 
-            "apunalar", "apuñaló", "apunalo", "herido de arma blanca", "puñalada", "punialada"
-        ])
-        has_real_crash = any(x in text_to_search for x in ["chocó contra", "choco contra", "colisionaron", "embistió a", "embistio a"])
-        
-        if is_armed_violence and not has_real_crash:
-            # Es un hecho policial de sangre, no un accidente vial. Se saltea.
-            pass
-        else:
-            vuelco_context = [
-                "auto", "automóvil", "automovil", "vehículo", "vehiculo", "coche",
-                "camión", "camion", "camioneta", "colectivo", "micro", "ómnibus", "omnibus", "bus",
-                "moto", "motocicleta", "motociclista", "ciclomotor", "rodado",
-                "ciclista", "bicicleta", "bici", "peatón", "peatona", "transeúnte", "transeunte",
-                "utilitario", "furgón", "furgon", "trafic", "ambulancia", "patrullero",
-                "ruta", "calle", "avenida", "av.", "autopista", "carretera", "asfalto", "calzada",
-                "banquina", "zanja", "cuneta", "bache", "semáforo", "semaforo", "esquina",
-                "conductor", "conductores", "pasajero", "pasajeros", "volcadura", "tránsito", "transito", "vial"
-            ]
-            false_positives = [
-                "vuelco inesperado", "vuelco en la causa", "vuelco en la investigacion",
-                "vuelco en la investigación", "vuelco en el caso", "giro inesperado",
-                "cayó detenido", "cayo detenido", "cayó preso", "cayo preso",
-                "cayó la banda", "cayo la banda", "cayó una banda", "cayo una banda",
-                "cayó por el robo", "cayo por el robo", "cayó por robo", "cayo por robo",
-                "cayó por robar", "cayo por robar", "cayó in fraganti", "cayo in fraganti",
-                "cayó con las manos", "cayo con las manos", "cayó tras", "cayo tras",
-                "cayó acusado", "cayo acusado", "caída de granizo", "caida de granizo",
-                "caída del cabello", "caida del cabello", "caída de las ventas", "caida de las ventas",
-                "caída del consumo", "caida del consumo"
-            ]
-        for slug, keywords in ACCIDENT_MAPPING.items():
-            if any(has_keyword_match(text_to_search, kw) for kw in keywords):
-                if slug == "vuelco":
-                    if any(fp in text_to_search for fp in false_positives):
-                        continue
-                    if not any(ctx in text_to_search for ctx in vuelco_context):
-                        continue
-                detected_category = slug
-                break
-
-    if not detected_category or lat is None:
+    # Si no tenemos resultado de Gemini (por error o límite de cuota),
+    # descartamos la noticia para garantizar calidad de datos 100% IA
+    if not gemini_res:
+        print(f"[GEO][DISCARD] No se pudo obtener el análisis estructurado de Gemini. Saltando noticia.")
         return None
 
-    is_fatal = any(has_keyword_match(text_to_search, kw) for kw in FATAL_KEYWORDS)
+    lat, lon, is_approx, source, loc_type = None, None, True, 'fallback', 'APPROXIMATE'
+    resolved = False
+
+    if gemini_res.get("location_query"):
+        q_str = gemini_res["location_query"]
+        q_is_approx = gemini_res.get("is_approximate", True)
+        res = resolve_geocode(q_str, q_is_approx)
+        if res:
+            lat, lon, is_approx, source, loc_type = res
+            resolved = True
+
+    if not resolved:
+        # Si no se pudo geolocalizar la dirección extraída por Gemini, descartamos la noticia
+        print(f"[GEO][DISCARD] No se pudo geolocalizar la dirección '{gemini_res.get('location_query')}' extraída por Gemini. Saltando noticia.")
+        return None
+
+    # ─── FASE 5: Detección de categoría ────────────────────────────────────────
+    detected_category = None
+    if gemini_res.get("category") and gemini_res["category"] not in ("desconocido", "desconocida", "desconocido", "desconocida", None):
+        detected_category = gemini_res["category"]
+
+    # Si Gemini no pudo categorizar válidamente el incidente, lo descartamos
+    if not detected_category:
+        print(f"[CATEGORY][DISCARD] Gemini no pudo categorizar de forma válida el incidente. Saltando noticia.")
+        return None
+
+    is_fatal = gemini_res.get("is_fatal", False)
     
     from email.utils import parsedate_to_datetime
     
@@ -1090,6 +1118,9 @@ def send_to_api(incident_data):
         print(f"[CONEXION FALLIDA] No se pudo enviar a la API: {e}")
 
 def scrape_html():
+    global gemini_calls_in_run, google_maps_calls_in_run
+    gemini_calls_in_run = 0
+    google_maps_calls_in_run = 0
     print(f"[{datetime.now()}] Iniciando barrido HTML...")
     session = requests.Session()
     SCRAPER_RULES = load_rules()
@@ -1126,6 +1157,9 @@ def scrape_html():
                 print(f"Error procesando HTML de {domain} - {scrape_url}: {e}")
 
 def scrape_rss():
+    global gemini_calls_in_run, google_maps_calls_in_run
+    gemini_calls_in_run = 0
+    google_maps_calls_in_run = 0
     print(f"[{datetime.now()}] Iniciando barrido de RSS...")
     SCRAPER_RULES = load_rules()
     for domain, source_config in SCRAPER_RULES["sources"].items():
