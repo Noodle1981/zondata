@@ -1,0 +1,3 @@
+Pasar las reglas a la base de datos: A medida que el proyecto crezca, tener palabras clave hardcodeadas en Python como BLACKLIST_KEYWORDS o CONTEXT_ACCIDENT hará que el archivo rss_scraper.py sea gigante y difícil de mantener. Llevarlas a la base de datos (por ejemplo, a una tabla scraper_rules o integrarlas en la administración de Laravel) te permitiría gestionarlas y agregarlas directamente desde la interfaz web, sin tocar código.
+Gemini optimizando las reglas: Usar a Gemini para analizar falsos positivos históricos y sugerir de forma autónoma nuevas palabras a ignorar o priorizar es una idea fantástica para automatizar el mantenimiento de la calidad de los datos.
+Como bien dices, eso queda anotado para una futura implementación.
