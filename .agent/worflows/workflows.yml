@@ -1,22 +1,23 @@
 name: ZonData Incident Pipeline
 
 workflows:
-  news_monitor:
-    description: "Escaneo de medios sanjuaninos para detección de eventos"
-    trigger: "Schedule (Every 15 mins)"
+  news_monitor_ingest:
+    description: "Ingesta y pre-filtrado rápido de titulares sin llamadas a APIs de Google"
+    trigger: "Cron Schedule (Every 30 mins)"
     tasks:
-      - run: python3 scrapers/media_monitor.py
-      - action: "Extract geo-coordinates from news body"
-      - post_to: "/api/incidents"
+      - run: python scrapers/rss_scraper.py --ingest-only
+      - action: "Evaluar título y guardar en raw_articles como queued o ignored"
 
-  data_cleanup:
-    description: "Mantenimiento de la frescura del mapa"
-    rules:
-      - "Ocultar incidentes de tránsito después de 6 horas"
-      - "Archivar reportes climáticos después de 24 horas"
+  news_processor:
+    description: "Procesamiento diferido de la cola raw_articles (Llamadas a Gemini y Google Geocoding)"
+    trigger: "Cron Schedule (Every 30 mins, desfase de 5 mins)"
+    tasks:
+      - run: python scrapers/rss_scraper.py --process-only
+      - action: "Extraer dirección, vehículos y víctimas con Gemini"
+      - action: "Geocodificar con Google Maps y enviar a Laravel /api/incidents"
 
   brand_compliance:
-    description: "Asegurar consistencia visual"
+    description: "Asegurar consistencia visual y tamaño de popups"
     checks:
-      - "Verificar que el logo ZonData (naranja/azul) esté presente"
-      - "Convertir cualquier imagen subida a formato .jpg estático"
+      - "Verificar que el popup no contenga descripción de texto plano"
+      - "Comprobar el correcto coloreado de las badges en MapComponent"

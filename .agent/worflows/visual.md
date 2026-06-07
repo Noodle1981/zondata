@@ -1,52 +1,46 @@
-1. Paleta de Colores
+# Lineamientos Visuales e Identidad: ZonData
+
+## 1. Paleta de Colores
 Basándonos en la identidad del logo, definimos los códigos cromáticos principales:
 
-Naranja Zonda (#F28C28): Representa el movimiento, el viento y la alerta. Se usará para:
+*   **Naranja Zonda (#F28C28):** Representa el movimiento, el viento, el fuego y la alerta. Se usa para:
+    *   La palabra "Zon" en el logotipo.
+    *   Botones de acción principal (CTAs).
+    *   Iconos y marcadores de incidentes climáticos y de urgencia (Vientos, Incendios).
+*   **Azul Tecnológico (#002D62):** Representa los datos, la seguridad y la estabilidad. Se usa para:
+    *   La palabra "Data" en el logotipo.
+    *   Barras de navegación, cabeceras del panel lateral y pie de página.
+    *   Tipografía principal y fondos oscuros.
+*   **Colores de Alerta Secundarios:**
+    *   **Rojo (#EF4444):** Únicamente para accidentes graves (con víctimas fatales) o alertas rojas críticas.
+    *   **Ámbar (#F59E0B):** Para accidentes con lesionados o alertas amarillas preventivas.
+    *   **Gris Claro (#F4F4F4):** Para fondos generales de secciones del mapa.
 
-La palabra "Zon" en el logo.
+---
 
-Botones de acción principal (CTA).
+## 2. Tipografía
+*   **Principal:** Sans-serif moderna (ej. Montserrat, Roboto o Instrument Sans) para facilitar la lectura rápida de datos en mapas.
+*   **Estilo:** Bold/Black para etiquetas de eventos y nombres de departamentos; Regular/Medium para subtítulos y fechas.
 
-Iconos de incidentes climáticos (Vientos, Incendios).
+---
 
-Azul Tecnológico (#002D62): Representa los datos, la seguridad y la estabilidad. Se usará para:
+## 3. Iconografía y Diseño del Mapa
+*   **Estilo de Iconos:** Minimalistas y planos (Flat Design) con siluetas de vehículos, llamas o viento.
+*   **Mapa Base:** Capa base de OpenStreetMap configurada en tonos claros/blancos (Voyager CartoDB) para que los pins resalten inmediatamente sin saturación visual.
+*   **Pins de Mapa:** Marcadores circulares con el icono del evento en el centro. Borde azul para eventos generales, borde naranja/rojo para incidentes críticos.
 
-La palabra "Data" en el logo.
+---
 
-Barras de navegación y pie de página.
+## 4. Popups del Mapa (Badges / Sin Texto Plano)
+Para asegurar que los popups mantengan una altura compacta y legible en pantallas móviles y de escritorio, **se prohíbe el renderizado de párrafos de texto plano de descripción**. En su lugar, el popup utiliza:
+*   El **título** limpio de la noticia.
+*   Una grilla de **badges de movilidad y severidad**:
+    *   `💀 Fatal` (rojo) o `🩹 Lesionados` (ámbar).
+    *   Iconos de vehículos: `🚗 Auto`, `🏍️ Moto`, `🛻 Camioneta`, `🚐 Utilitario`, `🚛 Camión`, `🚌 Colectivo`, `🚶 Peatón`, `🚲 Bicicleta`.
+*   Una tarjeta interna estructurada en gris claro (`bg-gray-50`) para listar nombres de personas/víctimas si existen en la BD.
 
-Tipografía principal y fondos oscuros.
+---
 
-Colores de Alerta Secundarios:
-
-Rojo: Únicamente para accidentes graves o cortes totales.
-
-Gris Claro (#F4F4F4): Para fondos de secciones y áreas de mapas.
-
-2. Tipografía
-Principal: Sans-serif moderna (ej. Montserrat o Roboto) para facilitar la lectura de datos rápidos.
-
-Estilo: Bold para resaltar etiquetas de eventos, Regular para descripciones y fuentes.
-
-3. Iconografía y Mapas
-Estilo de Iconos: Minimalistas y planos (Flat Design).
-
-Mapa: Capa base de OpenStreetMap configurada en tonos claros para que los pins naranjas y azules resalten inmediatamente.
-
-Pins de Mapa:
-
-Circulares con el icono del evento en el centro.
-
-Borde azul para eventos informativos, borde naranja para eventos de urgencia.
-
-4. Directrices de Imágenes y Recursos
-Formato Estricto: Todas las imágenes estáticas de la web deben utilizar el formato .jpg para mantener la ligereza y evitar complejidades técnicas.
-
-Animaciones: Se evitará la movilidad o animaciones complejas en las secciones web para asegurar un rendimiento óptimo en dispositivos móviles.
-
-5. Identidad Visual (Logo)
-Logotipo: Composición de la letra "Z" estilizada con conectores de datos.
-
-Uso: Debe ubicarse siempre en la esquina superior izquierda sobre fondo blanco o gris muy claro para no competir con los colores del isotipo.
-
-Restricción: No incluir el eslogan "Inteligencia provincial" para mantener el diseño limpio y directo.
+## 5. Directrices de Imágenes y Recursos
+*   **Formato Estricto:** Las imágenes estáticas de la web deben utilizar el formato .jpg para optimizar la ligereza y velocidad de carga.
+*   **Animaciones:** Se restringen a micro-animaciones (como el LED parpadeante de sincronización del panel lateral) para asegurar un rendimiento de 60fps en dispositivos móviles.

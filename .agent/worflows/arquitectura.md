@@ -1,22 +1,46 @@
 # Arquitectura Técnica: ZonData
 
 ## Stack Tecnológico
-- **Frontend:** React + Leaflet.js (Mapa interactivo) integrado en Laravel Blade.
+- **Frontend:** React + Leaflet.js (Mapa interactivo) integrado en Laravel Blade, compilado con Vite.
 - **Backend:** Laravel (PHP) como API y administrador de incidentes (Backpack).
-- **Ingesta:** Scripts de Python (Scrapers) independientes en `/scrapers`.
-- **Base de Datos:** SQLite (`database.sqlite`) para persistencia local de incidentes, configuraciones de fuentes y caché unificado de geocodificación.
+- **Ingesta:** Scripts de Python (Scrapers) independientes en `/scrapers` integrados con un sistema de cola SQLite local.
+- **Base de Datos:** SQLite (`database.sqlite`) para persistencia local de incidentes, configuraciones de fuentes, caché unificado de geocodificación y la cola intermedia de ingesta.
+
+---
 
 ## El Ciclo de Vida del Incidente
-1. **Detección & Deduplicación:** Los scripts de Python revisan RSS y portadas de medios de San Juan (ej. SanJuan8, Telesol, Huarpe).
-   - *Guardia de Hash*: Se calcula un MD5 del título y la fecha. Si ya fue procesado, se descarta.
-   - *Guardia de Ruido*: Se filtran hechos delictivos/policiales (balaceras, robos armados).
-2. **Geocodificación (Funnel de Precisión de 2 Niveles):**
-   - **Nivel 1 (SQLite Cache):** Si la dirección de la calle y localidad exacta ya está en `geocoding_cache`, recupera las coordenadas instantáneamente (costo $0, latencia cero).
-   - **Nivel 2 (Google Geocoding API):** Si es nueva, se geocodifica directamente mediante Google Maps API con restricciones estrictas de región (`region: ar`) y componentes (`administrative_area: San Juan | country: AR`) para garantizar precisión máxima. Se registra la precisión del tipo (`ROOFTOP`, `RANGE_INTERPOLATED`, `GEOMETRIC_CENTER`, `APPROXIMATE`) y el origen (`google`).
-3. **Extracción & Deduplicación por Nombres Propios (Fusión Inteligente):**
-   - *Limpieza de Calles*: Se remueven referencias viales (e.g. "calle Morón", "Avenida Ignacio de la Roza") para evitar que los nombres de calles actúen como falsos positivos de deduplicación.
-   - *Extracción de Nombres*: Un extractor heurístico local en Laravel extrae nombres de personas involucradas/víctimas del texto (e.g. `Firstname Lastname`).
-   - *Fusión por Ventana Temporal (±2 días)*: Si dos noticias comparten un nombre de víctima único dentro de este rango de tiempo, se consideran el mismo incidente.
-   - *Auto-Corrección de Ubicación*: Al fusionar, el incidente consolida descripciones y adopta automáticamente las coordenadas del reporte con mayor nivel de precisión de geocodificación (`ROOFTOP` > `RANGE_INTERPOLATED` > `GEOMETRIC_CENTER` > `APPROXIMATE`), resolviendo discrepancias o errores periodísticos locales.
-   - *Persistencia*: Se consolidan los nombres sin duplicaciones en la columna `victim_names` de la tabla `incidents`.
-4. **Visualización:** React renderiza los eventos activos en el mapa provincial. Los incidentes muestran badges interactivos con el origen de sus coordenadas, el nivel de precisión de Google, y un badge destacado en color carmín/rosa que lista los involucrados/víctimas con un icono de perfil de usuario.
+
+### 1. Ingesta y Pre-Filtrado (Python)
+* **Pre-Filtrado Local por Titular:** Los scrapers escanean RSS y HTML de medios sanjuaninos. Antes de descargar el cuerpo del artículo (deep fetch), se evalúa el título y la descripción corta usando las reglas de exclusión y palabras clave de incidentes locales de Python.
+* **Cola Desacoplada (`raw_articles`):** 
+  * Si el artículo califica como un posible incidente, se realiza el deep fetch y se guarda en `raw_articles` con estado `'queued'`.
+  * Si no califica (noticias de política, deportes o hechos de violencia familiar/delincuencia no viales), se guarda directamente con estado `'ignored'` y cuerpo vacío, ahorrando llamadas de red.
+  * Si ocurre un error de API o timeout en fases subsiguientes, el estado se cambia a `'failed'` para reintentos posteriores.
+
+### 2. Procesamiento Diferido (Python + APIs)
+* El motor de procesamiento (`process_queued_articles`) lee los registros `'queued'` de `raw_articles`:
+  * **Clasificación por Reglas de Python:** Se aplican las reglas estrictas de exclusión (armas de fuego, terminología de "giros", incidentes fuera de San Juan).
+  * **Extracción Estructurada con Gemini:** Se envía el texto completo a Gemini 2.5 Flash para extraer:
+    * `location_query`: Dirección exacta o paraje de referencia.
+    * `is_fatal`: Severidad (fallecidos).
+    * `victim_names`: Nombres propios completos de las víctimas involucradas.
+    * Booleanos de participación de vehículos: `has_car`, `has_pickup`, `has_utility`, `has_motorcycle`, `has_truck`, `has_bus`, `has_pedestrian`, `has_bicycle`.
+  * **Geocodificación de Alta Precisión:**
+    * **SQLite Cache:** Busca coincidencias históricas en `geocoding_cache` (costo $0, latencia cero).
+    * **Google Geocoding API:** Consulta con restricciones geográficas a San Juan, AR, registrando el `location_type` (`ROOFTOP`, `GEOMETRIC_CENTER`, etc.).
+
+### 3. API y Fusión Inteligente de Duplicados (Laravel)
+* Los datos estructurados se envían a `/api/incidents`.
+* **Fusión por Nombres de Víctimas / Proximidad (±2 días, ~1.5 km):**
+  * Si un nuevo reporte coincide temporalmente y es fatal, se asocia a accidentes previos usando los nombres propios extraídos por Gemini (o regex de fallback en PHP).
+  * Si es duplicado, realiza una **fusión aditiva** de vehículos involucrados y consolida nombres (ej. actualizando "Melani" a "Melani Desseff").
+  * **Precisión Dinámica:** El incidente adopta de manera automática las coordenadas y la dirección del reporte con mayor nivel de precisión de geocodificación (`ROOFTOP` > `RANGE_INTERPOLATED` > `GEOMETRIC_CENTER` > `APPROXIMATE`).
+
+### 4. Visualización e Interfaz de Usuario (React)
+* El mapa renderiza los incidentes mediante marcadores personalizados según la categoría.
+* **Popup de Mapa Rediseñado (Badges / Sin Ruido):** Para evitar desbordamientos y publicidad de los diarios, se omiten las descripciones de texto plano en los popups. En su lugar, se renderiza una interfaz compacta que incluye:
+  * El **título** limpio de la noticia.
+  * Etiquetas de **severidad**: `💀 Fatal` (rojo) o `🩹 Lesionados` (ámbar).
+  * Etiquetas de **vehículos involucrados**: Badges específicos con iconos (ej: `🚗 Auto`, `🏍️ Moto`).
+  * Recuadro estructurado de **personas involucradas** (víctimas).
+  * Datos de la fuente (con enlace directo), fecha, origen de geocodificación y nivel de precisión.
