@@ -780,7 +780,10 @@ class IncidentController extends Controller
         $fullNames = [];
         if (!empty($pairs[0])) {
             foreach ($pairs[0] as $match) {
-                $words = explode(' ', $match);
+                $words = preg_split('/\s+/', $match);
+                if (count($words) < 2) {
+                    continue;
+                }
                 $w1Lower = mb_strtolower($words[0], 'UTF-8');
                 $w2Lower = mb_strtolower($words[1], 'UTF-8');
                 
