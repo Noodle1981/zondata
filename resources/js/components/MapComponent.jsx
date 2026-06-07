@@ -708,27 +708,90 @@ const MapComponent = () => {
                             icon={createCustomIcon(incident.category?.slug || '', incident.is_approximate, incident.is_fatal, incident.title)}
                         >
                             <Popup className="custom-popup">
-                                <div className="p-1">
+                                <div className="p-1.5 min-w-[220px] max-w-[265px]">
                                     <div className="flex justify-between items-start mb-2 gap-2">
-                                        <span className="inline-block px-2 py-1 bg-gray-100 text-xs font-bold rounded text-[#002D62]">
+                                        <span className="inline-block px-2 py-0.5 bg-[#002D62] text-white text-[9px] font-black rounded uppercase tracking-wider">
                                             {incident.category?.name || 'Evento'}
                                         </span>
                                         {renderPrecisionBadge(incident)}
                                     </div>
-                                    <h3 className="font-bold text-sm mb-1">{incident.title}</h3>
+                                    
+                                    <h3 className="font-bold text-xs text-gray-800 leading-snug mb-2">{incident.title}</h3>
+                                    
+                                    {/* Etiquetas de Siniestro (Movilidades e Gravedad) */}
+                                    <div className="flex flex-wrap gap-1 mb-2">
+                                        {/* Severidad */}
+                                        {incident.is_fatal ? (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-100 text-[9px] font-black uppercase tracking-wide">
+                                                💀 Fatal
+                                            </span>
+                                        ) : (
+                                            ['choque', 'vuelco', 'atropello', 'accidente'].includes(incident.category?.slug) && (
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100 text-[9px] font-black uppercase tracking-wide">
+                                                    🩹 Lesionados
+                                                </span>
+                                            )
+                                        )}
+
+                                        {/* Vehículos Involucrados */}
+                                        {incident.has_car && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[9px] font-bold">
+                                                🚗 Auto
+                                            </span>
+                                        )}
+                                        {incident.has_pickup && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-100 text-[9px] font-bold">
+                                                🛻 Camioneta
+                                            </span>
+                                        )}
+                                        {incident.has_utility && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-100 text-[9px] font-bold">
+                                                🚐 Utilitario
+                                            </span>
+                                        )}
+                                        {incident.has_motorcycle && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 text-[9px] font-bold">
+                                                🏍️ Moto
+                                            </span>
+                                        )}
+                                        {incident.has_truck && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-100 text-[9px] font-bold">
+                                                🚛 Camión
+                                            </span>
+                                        )}
+                                        {incident.has_bus && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100 text-[9px] font-bold">
+                                                🚌 Colectivo
+                                            </span>
+                                        )}
+                                        {incident.has_pedestrian && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 text-[9px] font-bold">
+                                                🚶 Peatón
+                                            </span>
+                                        )}
+                                        {incident.has_bicycle && (
+                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-bold">
+                                                🚲 Bicicleta
+                                            </span>
+                                        )}
+                                    </div>
+
                                     {incident.victim_names && (
-                                        <div className="flex items-center gap-1.5 my-2 px-2 py-1 bg-red-50 border border-red-100 rounded text-[11px] font-semibold text-red-700">
-                                            <svg className="w-3.5 h-3.5 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                        <div className="flex items-start gap-1 my-2 px-1.5 py-1 bg-gray-50 border border-gray-150 rounded text-[9px] text-gray-700 leading-normal">
+                                            <svg className="w-3.5 h-3.5 flex-shrink-0 text-red-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                                             </svg>
-                                            <span>Involucrado/s: <strong className="text-red-900">{incident.victim_names}</strong></span>
+                                            <div className="min-w-0">
+                                                <span className="text-gray-400 block text-[8px] uppercase tracking-wider font-black leading-none mb-0.5">Personas</span>
+                                                <strong className="text-gray-800 font-bold">{incident.victim_names}</strong>
+                                            </div>
                                         </div>
                                     )}
-                                    {incident.description && <p className="text-xs text-gray-600 mb-2">{incident.description}</p>}
+
                                     <div className="text-[10px] border-t pt-2 mt-2">
-                                        Visto en: <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-blue-500 font-medium">{incident.source_name}</a>
+                                        Visto en: <a href={incident.source_url} target="_blank" rel="noreferrer" className="text-blue-500 font-bold hover:underline">{incident.source_name}</a>
                                         <br/>
-                                        <span className="text-gray-400">{new Date(incident.event_date).toLocaleString('es-AR')}</span>
+                                        <span className="text-gray-400">{new Date(incident.event_date).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</span>
                                         <div className="flex justify-between items-center text-[9px] text-gray-400 mt-1.5 pt-1 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
                                             <span>Vía: <span className="font-semibold text-gray-500 uppercase">{incident.source || 'nominatim'}</span></span>
                                             <span>Precisión: <span className="font-semibold text-gray-500 uppercase">{incident.location_type || 'GEOMETRIC_CENTER'}</span></span>

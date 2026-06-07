@@ -263,16 +263,60 @@ def save_to_cache(query, lat, lon, is_approx, source='nominatim', location_type=
 init_cache_db()
 
 def is_url_processed(url):
-    """Verifica en la BD local si la URL ya fue ingresada para evitar raspado redundante"""
+    """Verifica en la BD local si la URL ya fue ingresada en incidents o raw_articles para evitar raspado redundante"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
+        
+        # Verificar en incidents
         cursor.execute("SELECT id FROM incidents WHERE source_url = ?", (url,))
+        row = cursor.fetchone()
+        if row is not None:
+            conn.close()
+            return True
+            
+        # Verificar en raw_articles
+        cursor.execute("SELECT id FROM raw_articles WHERE source_url = ?", (url,))
         row = cursor.fetchone()
         conn.close()
         return row is not None
     except Exception as e:
         print(f"[ERROR] Error al verificar URL duplicada en la DB: {e}")
+        return False
+
+def save_raw_article(title, description, body_text, source_url, source_name, pub_date_str=None, status='queued'):
+    """Inserta una noticia cruda en la tabla raw_articles de la base de datos SQLite"""
+    try:
+        # Formatear la fecha de publicación si existe
+        formatted_date = None
+        if pub_date_str:
+            from email.utils import parsedate_to_datetime
+            try:
+                dt = parsedate_to_datetime(pub_date_str)
+                # Quitar información de zona horaria para compatibilidad SQLite
+                dt = dt.replace(tzinfo=None)
+                formatted_date = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        
+        if not formatted_date:
+            formatted_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO raw_articles 
+                (title, description, body, source_name, source_url, publish_date, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, description, body_text, source_name, source_url, formatted_date, status, now_str, now_str))
+        conn.commit()
+        conn.close()
+        print(f"[INGESTA][NUEVO] Guardada en raw_articles ({status}): '{title[:50]}...' ({source_name})")
+        return True
+    except Exception as e:
+        print(f"[INGESTA][ERROR] Error al guardar artículo crudo en la DB: {e}")
         return False
 
 def make_content_hash(title: str, pub_date_str: str | None) -> str:
@@ -536,9 +580,55 @@ Cuerpo: {body_text}"""
                         "type": "STRING",
                         "enum": ["choque", "vuelco", "atropello", "incendio-vivienda", "incendio-pastizales", "incendio-vehiculo", "arboles", "corte", "techo", "incendio", "accidente", "desconocido"],
                         "description": "La categoría del incidente."
+                    },
+                    "is_retrospective_or_historical": {
+                        "type": "BOOLEAN",
+                        "description": "true si la noticia es una retrospectiva, un aniversario, un recuento histórico, actualizaciones o sentencias judiciales de un caso antiguo, o habla de un hecho que ocurrió hace meses o años. false si reporta un suceso vial, incendio o caída de ramas/árboles reciente que ocurrió en los últimos días."
+                    },
+                    "victim_names": {
+                        "type": "ARRAY",
+                        "items": {"type": "STRING"},
+                        "description": "Nombres propios completos de las víctimas o personas físicas involucradas mencionadas en la noticia (ej: 'Juan Pérez'). No incluir nombres de policías, médicos, jueces o fiscales. Devolver array vacío si no hay nombres."
+                    },
+                    "has_car": {
+                        "type": "BOOLEAN",
+                        "description": "true si un auto, automóvil, taxi, remis o coche estuvo involucrado en el hecho."
+                    },
+                    "has_pickup": {
+                        "type": "BOOLEAN",
+                        "description": "true si una camioneta o pick-up (ej: Hilux, Amarok, Ranger) estuvo involucrada."
+                    },
+                    "has_utility": {
+                        "type": "BOOLEAN",
+                        "description": "true si un utilitario o furgón (ej: Kangoo, Fiorino, Partner, Trafic) estuvo involucrado."
+                    },
+                    "has_motorcycle": {
+                        "type": "BOOLEAN",
+                        "description": "true si una motocicleta, moto o ciclomotor estuvo involucrado."
+                    },
+                    "has_truck": {
+                        "type": "BOOLEAN",
+                        "description": "true si un camión, acoplado o semirremolque estuvo involucrado."
+                    },
+                    "has_bus": {
+                        "type": "BOOLEAN",
+                        "description": "true si un colectivo, ómnibus o micro de pasajeros estuvo involucrado."
+                    },
+                    "has_pedestrian": {
+                        "type": "BOOLEAN",
+                        "description": "true si un peatón o transeúnte fue atropellado o involucrado."
+                    },
+                    "has_bicycle": {
+                        "type": "BOOLEAN",
+                        "description": "true si una bicicleta o ciclista estuvo involucrado."
                     }
                 },
-                "required": ["location_query", "is_approximate", "is_fatal", "category"]
+                "required": [
+                    "location_query", "is_approximate", "is_fatal", "category", 
+                    "is_retrospective_or_historical", "victim_names",
+                    "has_car", "has_pickup", "has_utility", "has_motorcycle", 
+                    "has_truck", "has_bus", "has_pedestrian", "has_bicycle"
+                ]
             }
         }
     }
@@ -950,24 +1040,16 @@ def fetch_article_text(url):
     return ""
 
 
-def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", rule=None, pub_date_str=None):
-    title = clean_html(title)
-    description = clean_html(description)
-
-    # ─── GUARDIA ANTI-DUPLICADO: Hash de contenido ────────────────────────────
-    # Genera un hash MD5 del título normalizado + fecha de publicación.
-    # Si ya procesamos una noticia con este contenido (aunque tenga distinta URL),
-    # la descartamos ANTES de hacer cualquier deep fetch o llamada de geocoding.
-    content_hash = make_content_hash(title, pub_date_str)
-    if is_content_processed(content_hash):
-        print(f"[HASH-DUP] Noticia ya procesada (mismo título/fecha, distinta URL): '{title[:80]}...'")
-        return None
-
-    text_to_search = (title + " " + description).lower()
-    # Evitar falsos positivos de "fuego" y usos figurativos de "impacto" / "giro"
-    text_to_search = text_to_search.replace("matafuegos", "").replace("matafuego", "")
+def classify_article_with_python_rules(title, description, body_text, rule=None):
+    """
+    Clasifica una noticia utilizando las reglas tradicionales de Python (palabras clave y exclusiones).
+    Retorna la categoría detectada (slug) o None si no corresponde a un incidente válido.
+    """
+    title_desc_combined = (title + " " + (description or "")).lower()
+    text_to_search = (title + " " + (description or "") + " " + (body_text or "")).lower()
     
-    # Exclusión de modismos y falsos positivos de "impacto" (que disparan contexto de accidente)
+    # Ruidos y falsos positivos de "fuego" / "impacto" / "giro"
+    text_to_search = text_to_search.replace("matafuegos", "").replace("matafuego", "")
     for term in [
         "fuerte impacto", "gran impacto", "alto impacto", "bajo impacto", 
         "impacto economico", "impacto social", "impacto politico", "impacto ambiental",
@@ -975,53 +1057,147 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         "dieron un giro", "giro inesperado", "giro en la investigacion", "giro en la causa"
     ]:
         text_to_search = text_to_search.replace(term, "")
-        
+        title_desc_combined = title_desc_combined.replace(term, "")
+
+    # 1. Filtros de palabras prohibidas globales
     if any(black_word in text_to_search for black_word in BLACKLIST_KEYWORDS):
         return None
     if rule and rule.get("ignore_terms"):
         if any(term in text_to_search for term in rule["ignore_terms"]):
             return None
 
-
-    # ─── FASE 1: Pre-filtro por título/descripción ────────────────────────────
-    # Si el título/descripción no contiene ninguna señal relevante (accidente,
-    # incendio, viento), se descarta SIN hacer deep fetch para no desperdiciar
-    # ancho de banda ni provocar 429 de Nominatim con texto de menús/secciones.
-    ALL_CONTEXT_KEYWORDS = CONTEXT_WIND + CONTEXT_FIRE + CONTEXT_ACCIDENT
-    if not any(has_keyword_match(text_to_search, kw) for kw in ALL_CONTEXT_KEYWORDS):
-        return None
-
-    # ─── FASE 2: Filtros de ubicación ─────────────────────────────────────────
+    # 2. Filtrado de provincias (exclusión de noticias fuera de San Juan)
     mentions_other_province = any(prov in text_to_search for prov in BLACKLIST_PROVINCIAS)
     mentions_local = (
         any(loc.lower() in text_to_search for loc in LOCALIDADES) or
         any(dept.lower() in text_to_search for dept in DEPARTAMENTOS)
     )
-    title_desc_combined = (title + " " + description).lower()
     if any(re.search(pat, title_desc_combined, re.IGNORECASE) for pat in BLACKLIST_EVENT_LOCATION_PATTERNS):
         return None
     if mentions_other_province and not mentions_local:
         return None
 
-    # ─── FASE 3: Deep fetch (solo si el título tenía señal relevante) ──────────
-    # Leer el cuerpo completo para obtener más contexto geográfico y de categoría.
-    deep_fetch_enabled = rule.get("deep_fetch", True) if rule else True
-    body_text = ""
-    if deep_fetch_enabled and link and link.startswith("http"):
-        body_text = fetch_article_text(link)
-        if body_text:
-            text_to_search += " " + body_text.lower()
+    # 3. Categorización por reglas
+    detected_category = None
+    
+    # VIENTO / ZONDA
+    if any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_WIND):
+        for slug, keywords in WIND_MAPPING.items():
+            if any(has_keyword_match(text_to_search, kw) for kw in keywords):
+                detected_category = slug
+                break
+                
+    # INCENDIOS
+    if not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_FIRE):
+        is_firearm = any(x in text_to_search for x in [
+            "arma de fuego", "armas de fuego", "disparó", "disparo", "dispararon",
+            "balearon", "balear", "herido de bala", "herida de bala", "impactos de bala", 
+            "recibio disparos", "recibió disparos", "tiros", "disparos", "balacera", "balazo"
+        ])
+        is_animal = "llamas" in text_to_search and any(a in text_to_search for a in ["animal", "aves", "guanaco", "fauna", "especie", "ejemplar"])
+        if not (is_firearm or is_animal):
+            detected_category = "incendio"
+            for slug, fire_kws in FIRE_MAPPING.items():
+                if any(has_keyword_match(text_to_search, kw) for kw in fire_kws):
+                    detected_category = slug
+                    break
+                    
+    # ACCIDENTES
+    if not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_ACCIDENT):
+        is_armed_violence = any(x in text_to_search for x in [
+            "balearon", "balear", "herido de bala", "herida de bala", "impactos de bala", 
+            "recibio disparos", "recibió disparos", "tiros", "disparos", "apuñalaron", 
+            "apunalar", "apuñaló", "apunalo", "herido de arma blanca", "puñalada", "punialada"
+        ])
+        has_real_crash = any(x in text_to_search for x in ["chocó contra", "choco contra", "colisionaron", "embistió a", "embistio a"])
+        
+        if is_armed_violence and not has_real_crash:
+            pass
+        else:
+            vuelco_context = [
+                "auto", "automóvil", "automovil", "vehículo", "vehiculo", "coche",
+                "camión", "camion", "camioneta", "colectivo", "micro", "ómnibus", "omnibus", "bus",
+                "moto", "motocicleta", "motociclista", "ciclomotor", "rodado",
+                "ciclista", "bicicleta", "bici", "peatón", "peatona", "transeúnte", "transeunte",
+                "utilitario", "furgón", "furgon", "trafic", "ambulancia", "patrullero",
+                "ruta", "calle", "avenida", "av.", "autopista", "carretera", "asfalto", "calzada",
+                "banquina", "zanja", "cuneta", "bache", "semáforo", "semaforo", "esquina",
+                "conductor", "conductores", "pasajero", "pasajeros", "volcadura", "tránsito", "transito", "vial"
+            ]
+            false_positives = [
+                "vuelco inesperado", "vuelco en la causa", "vuelco en la investigacion",
+                "vuelco en la investigación", "vuelco en el caso", "giro inesperado",
+                "cayó detenido", "cayo detenido", "cayó preso", "cayo preso",
+                "cayó la banda", "cayo la banda", "cayó una banda", "cayo una banda",
+                "cayó por el robo", "cayo por el robo", "cayó por robo", "cayo por robo",
+                "cayó por robar", "cayo por robar", "cayó in fraganti", "cayo in fraganti",
+                "cayó con las manos", "cayo con las manos", "cayó tras", "cayo tras",
+                "cayó acusado", "cayo acusado", "caída de granizo", "caida de granizo",
+                "caída del cabello", "caida del cabello", "caída de las ventas", "caida de las ventas",
+                "caída del consumo", "caida del consumo"
+            ]
+            for slug, keywords in ACCIDENT_MAPPING.items():
+                if any(has_keyword_match(text_to_search, kw) for kw in keywords):
+                    if slug == "vuelco":
+                        if any(fp in text_to_search for fp in false_positives):
+                            continue
+                        if body_text and not any(ctx in text_to_search for ctx in vuelco_context):
+                            continue
+                    detected_category = slug
+                    break
+                    
+    return detected_category
 
-    # ─── FASE 4: Geocodificación con texto completo ────────────────────────────
+
+def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", rule=None, pub_date_str=None, body_text=""):
+    title = clean_html(title)
+    description = clean_html(description)
+
+    # ─── CONTROL DE FECHA: Omitir si la publicación es mayor a 3 días ──────────
+    from email.utils import parsedate_to_datetime
+    pub_date = datetime.now()
+    if pub_date_str:
+        try:
+            # Si ya es una fecha formateada de la DB
+            if isinstance(pub_date_str, str) and "-" in pub_date_str and ":" in pub_date_str:
+                pub_date = datetime.strptime(pub_date_str, "%Y-%m-%d %H:%M:%S")
+            else:
+                pub_date = parsedate_to_datetime(pub_date_str)
+                pub_date = pub_date.replace(tzinfo=None)
+        except Exception as e:
+            print(f"[WARNING] No se pudo parsear pubDate '{pub_date_str}': {e}")
+            pass
+
+    age_days = (datetime.now() - pub_date).days
+    if age_days > 3:
+        print(f"[DATE][DISCARD] Noticia omitida por antigüedad ({pub_date.strftime('%Y-%m-%d')}, hace {age_days} días): '{title[:60]}...'")
+        return None
+
+    # ─── GUARDIA ANTI-DUPLICADO: Hash de contenido ────────────────────────────
+    content_hash = make_content_hash(title, pub_date_str)
+    if is_content_processed(content_hash):
+        print(f"[HASH-DUP] Noticia ya procesada (mismo título/fecha, distinta URL): '{title[:80]}...'")
+        return None
+
+    # ─── FASE 1: Clasificación de categoría y filtros de Python locales ─────────
+    # Si las reglas de Python no clasifican esta noticia como un incidente válido,
+    # se descarta de inmediato ahorrando llamadas a la API de Gemini.
+    detected_category = classify_article_with_python_rules(title, description, body_text, rule)
+    if not detected_category:
+        print(f"[RULES][DISCARD] No clasifica como incidente o es falso positivo (Python): '{title[:60]}...'")
+        return None
+
+    # ─── FASE 4: Geocodificación con texto completo (Gemini + Google Maps) ──────
     gemini_res = None
     gemini_key = get_env_variable("GEMINI_API_KEY")
     if gemini_key:
         gemini_res = extract_location_with_gemini(title, description, body_text)
+        if not gemini_res:
+            raise Exception("No se pudo obtener respuesta válida de Gemini API (posible error, límite o timeout)")
 
-    # Si no tenemos resultado de Gemini (por error o límite de cuota),
-    # descartamos la noticia para garantizar calidad de datos 100% IA
-    if not gemini_res:
-        print(f"[GEO][DISCARD] No se pudo obtener el análisis estructurado de Gemini. Saltando noticia.")
+    # Omitir retrospectivas o noticias históricas
+    if gemini_res.get("is_retrospective_or_historical"):
+        print(f"[GEMINI][DISCARD] Noticia descartada por ser retrospectiva o histórica: '{title[:60]}...'")
         return None
 
     lat, lon, is_approx, source, loc_type = None, None, True, 'fallback', 'APPROXIMATE'
@@ -1030,6 +1206,19 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
     if gemini_res.get("location_query"):
         q_str = gemini_res["location_query"]
         q_is_approx = gemini_res.get("is_approximate", True)
+        
+        # Ignorar ubicaciones explícitamente desconocidas o genéricas
+        q_str_clean = q_str.strip().lower()
+        unknown_terms = (
+            "desconocido", "desconocida", "desconocido", "desconocida", 
+            "fuera de san juan", "sin direccion", "sin dirección", 
+            "unknown", "none", "no especifica", "no especificado", 
+            "no se especifica", "no menciona", "no determinado"
+        )
+        if q_str_clean in unknown_terms or not q_str_clean:
+            print(f"[GEO][DISCARD] La ubicación extraída es desconocida o genérica: '{q_str}'. Saltando noticia.")
+            return None
+
         res = resolve_geocode(q_str, q_is_approx)
         if res:
             lat, lon, is_approx, source, loc_type = res
@@ -1040,32 +1229,15 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         print(f"[GEO][DISCARD] No se pudo geolocalizar la dirección '{gemini_res.get('location_query')}' extraída por Gemini. Saltando noticia.")
         return None
 
-    # ─── FASE 5: Detección de categoría ────────────────────────────────────────
-    detected_category = None
-    if gemini_res.get("category") and gemini_res["category"] not in ("desconocido", "desconocida", "desconocido", "desconocida", None):
-        detected_category = gemini_res["category"]
-
-    # Si Gemini no pudo categorizar válidamente el incidente, lo descartamos
-    if not detected_category:
-        print(f"[CATEGORY][DISCARD] Gemini no pudo categorizar de forma válida el incidente. Saltando noticia.")
-        return None
+    # Si Gemini detecta una subcategoría específica válida, refinamos el resultado de Python
+    if gemini_res.get("category") and gemini_res["category"] not in ("desconocido", "desconocida", None):
+        if gemini_res["category"] in ["choque", "vuelco", "atropello", "incendio-vivienda", "incendio-pastizales", "incendio-vehiculo", "arboles", "corte", "techo", "incendio", "accidente"]:
+            detected_category = gemini_res["category"]
 
     is_fatal = gemini_res.get("is_fatal", False)
     
-    from email.utils import parsedate_to_datetime
-    
-    pub_date = datetime.now()
-    if pub_date_str:
-        try:
-            # RSS pubDate typically uses RFC 2822
-            pub_date = parsedate_to_datetime(pub_date_str)
-            # Remove timezone info to match our DB format (naive local)
-            pub_date = pub_date.replace(tzinfo=None)
-        except Exception as e:
-            print(f"[WARNING] No se pudo parsear pubDate '{pub_date_str}': {e}")
-            pass
-            
     event_date = pub_date
+    text_to_search = (title + " " + (description or "") + " " + (body_text or "")).lower()
     if "ayer" in text_to_search or "anoche" in text_to_search:
         from datetime import timedelta
         event_date = pub_date - timedelta(days=1)
@@ -1073,19 +1245,23 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
     # Persistir el hash ANTES de retornar para que futuras corridas no re-geocodifiquen esta noticia
     save_content_hash(content_hash, link or '')
 
-    # Concatenar la descripción corta y el cuerpo completo para que la API de Laravel 
-    # tenga todo el texto disponible para la extracción de nombres de víctimas y análisis.
-    full_description = description if description else ""
-    if body_text:
-        # Evitar duplicar el copete si ya está al inicio del cuerpo
-        cleaned_body = body_text.strip()
-        if full_description and cleaned_body.startswith(full_description[:100]):
-            full_description = cleaned_body
+    # Generar una descripción concisa para la UI (máximo ~500 caracteres)
+    if description and len(description.strip()) >= 120:
+        # Si la descripción de la fuente ya es sustancial, la usamos directamente
+        full_description = description.strip()
+    elif body_text:
+        # Si no hay descripción o es muy corta, usamos los primeros párrafos del cuerpo
+        paragraphs = [p.strip() for p in body_text.split("\n") if p.strip()]
+        if paragraphs:
+            # Tomar hasta los primeros 2 párrafos
+            selected_text = " ".join(paragraphs[:2])
+            if len(selected_text) > 500:
+                selected_text = selected_text[:500].rsplit(' ', 1)[0] + "..."
+            full_description = selected_text
         else:
-            full_description = (full_description + "\n\n" + cleaned_body).strip()
-            
-    if not full_description:
-        full_description = "Sin descripción."
+            full_description = description.strip() if description else "Sin descripción."
+    else:
+        full_description = description.strip() if description else "Sin descripción."
 
     return {
         "etiqueta": detected_category,
@@ -1101,7 +1277,16 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         "fuente_url": link,
         "event_date": event_date.strftime("%Y-%m-%d %H:%M:%S"),
         "source_publish_date": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
-        "verificado": False
+        "verificado": False,
+        "victim_names": ", ".join(gemini_res.get("victim_names", [])) if gemini_res.get("victim_names") else None,
+        "has_car": gemini_res.get("has_car", False),
+        "has_pickup": gemini_res.get("has_pickup", False),
+        "has_utility": gemini_res.get("has_utility", False),
+        "has_motorcycle": gemini_res.get("has_motorcycle", False),
+        "has_truck": gemini_res.get("has_truck", False),
+        "has_bus": gemini_res.get("has_bus", False),
+        "has_pedestrian": gemini_res.get("has_pedestrian", False),
+        "has_bicycle": gemini_res.get("has_bicycle", False)
     }
 
 
@@ -1117,10 +1302,89 @@ def send_to_api(incident_data):
     except Exception as e:
         print(f"[CONEXION FALLIDA] No se pudo enviar a la API: {e}")
 
-def scrape_html():
+def process_queued_articles():
+    """Procesa todas las noticias de raw_articles con estado 'queued' utilizando analyze_news"""
+    print(f"[{datetime.now()}] Iniciando procesamiento de noticias en cola (raw_articles)...")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, description, body, source_name, source_url, publish_date 
+            FROM raw_articles 
+            WHERE status = 'queued'
+        """)
+        queued = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"[PROCESADOR][ERROR] No se pudo leer noticias de la DB: {e}")
+        return
+
+    if not queued:
+        print("[PROCESADOR] No hay noticias en cola para procesar.")
+        return
+
+    print(f"[PROCESADOR] Se encontraron {len(queued)} noticias pendientes.")
+    SCRAPER_RULES = load_rules()
+
     global gemini_calls_in_run, google_maps_calls_in_run
     gemini_calls_in_run = 0
     google_maps_calls_in_run = 0
+
+    for row in queued:
+        art_id, title, description, body_text, source_name, source_url, publish_date = row
+        print(f"[PROCESADOR][ARTICULO] Procesando ID {art_id}: '{title[:50]}...'")
+
+        # Intentar obtener la configuración para este dominio
+        from urllib.parse import urlparse
+        parsed_url = urlparse(source_url)
+        domain = parsed_url.netloc.replace("www.", "")
+        rule = get_source_rule(SCRAPER_RULES, domain)
+
+        try:
+            # Procesar el artículo usando la lógica unificada de analyze_news
+            incident = analyze_news(
+                title=title,
+                description=description,
+                link=source_url,
+                fuente_nombre=source_name,
+                rule=rule,
+                pub_date_str=publish_date,
+                body_text=body_text
+            )
+
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            if incident:
+                # Si clasifica como incidente y se geocodifica, enviar a Laravel API
+                send_to_api(incident)
+                # Actualizar estado a 'processed'
+                cursor.execute("UPDATE raw_articles SET status = 'processed', error_message = NULL, updated_at = ? WHERE id = ?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), art_id))
+            else:
+                # Si no clasifica como incidente, marcar como 'ignored'
+                cursor.execute("UPDATE raw_articles SET status = 'ignored', error_message = NULL, updated_at = ? WHERE id = ?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), art_id))
+
+            conn.commit()
+            conn.close()
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[PROCESADOR][ERROR] Error procesando artículo ID {art_id}: {error_msg}")
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("UPDATE raw_articles SET status = 'failed', error_message = ?, updated_at = ? WHERE id = ?", (error_msg, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), art_id))
+                conn.commit()
+                conn.close()
+            except Exception as e2:
+                print(f"[PROCESADOR][ERROR] No se pudo guardar el estado de error en la DB: {e2}")
+
+        # Pequeña pausa para no saturar APIs si es procesado
+        time.sleep(1)
+
+    print(f"[{datetime.now()}] Procesamiento finalizado.")
+
+def scrape_html():
     print(f"[{datetime.now()}] Iniciando barrido HTML...")
     session = requests.Session()
     SCRAPER_RULES = load_rules()
@@ -1150,16 +1414,24 @@ def scrape_html():
                         if rule["duplicate_check"] and link and is_url_processed(link):
                             print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
                             continue
-                        incident = analyze_news(title, desc, link, medio, rule)
-                        if incident:
-                            send_to_api(incident)
+                        
+                        potential_category = classify_article_with_python_rules(title, desc, None, rule)
+                        body_text = ""
+                        status = 'queued'
+                        
+                        if potential_category:
+                            deep_fetch_enabled = rule.get("deep_fetch", True)
+                            if deep_fetch_enabled and link and link.startswith("http"):
+                                body_text = fetch_article_text(link)
+                        else:
+                            print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
+                            status = 'ignored'
+                        
+                        save_raw_article(title, desc, body_text, link, medio, status=status)
             except Exception as e:
                 print(f"Error procesando HTML de {domain} - {scrape_url}: {e}")
 
 def scrape_rss():
-    global gemini_calls_in_run, google_maps_calls_in_run
-    gemini_calls_in_run = 0
-    google_maps_calls_in_run = 0
     print(f"[{datetime.now()}] Iniciando barrido de RSS...")
     SCRAPER_RULES = load_rules()
     for domain, source_config in SCRAPER_RULES["sources"].items():
@@ -1187,10 +1459,19 @@ def scrape_rss():
                             print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
                             continue
                         if title:
-                            incident = analyze_news(title, desc, link, fuente_nombre, rule, pub_date_str)
-                            if incident:
-                                send_to_api(incident)
-                                time.sleep(1)
+                            potential_category = classify_article_with_python_rules(title, desc, None, rule)
+                            body_text = ""
+                            status = 'queued'
+                            
+                            if potential_category:
+                                deep_fetch_enabled = rule.get("deep_fetch", True)
+                                if deep_fetch_enabled and link and link.startswith("http"):
+                                    body_text = fetch_article_text(link)
+                            else:
+                                print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
+                                status = 'ignored'
+                            
+                            save_raw_article(title, desc, body_text, link, fuente_nombre, pub_date_str, status=status)
             except Exception as e:
                 print(f"Error procesando el feed {feed_url}: {e}")
 
@@ -1203,8 +1484,10 @@ if __name__ == "__main__":
         while True:
             scrape_rss()
             scrape_html()
+            process_queued_articles()
             print(f"[{datetime.now()}] Esperando 30 minutos para el próximo barrido...")
             time.sleep(1800)
     else:
         scrape_rss()
         scrape_html()
+        process_queued_articles()

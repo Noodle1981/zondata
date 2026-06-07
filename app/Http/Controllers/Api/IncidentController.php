@@ -291,6 +291,15 @@ class IncidentController extends Controller
             'verificado'   => 'nullable|boolean',
             'event_date'   => 'nullable|date',
             'source_publish_date' => 'nullable|date',
+            'victim_names'   => 'nullable|string',
+            'has_car'        => 'nullable|boolean',
+            'has_pickup'     => 'nullable|boolean',
+            'has_utility'    => 'nullable|boolean',
+            'has_motorcycle' => 'nullable|boolean',
+            'has_truck'      => 'nullable|boolean',
+            'has_bus'        => 'nullable|boolean',
+            'has_pedestrian' => 'nullable|boolean',
+            'has_bicycle'    => 'nullable|boolean',
         ]);
 
         // Buscar o crear la categoría según la etiqueta
@@ -403,11 +412,42 @@ class IncidentController extends Controller
         $roadType = $roadInfo['road_type'];
         $roadName = $roadInfo['road_name'];
 
+        // --- Resolución de Víctimas (Gemini o Fallback Regex) ---
+        $victimNames = $request->input('victim_names');
+        $namesToSearch = [];
+        if (!is_null($victimNames) && $victimNames !== '') {
+            if (is_array($victimNames)) {
+                $namesToSearch = $victimNames;
+                $victimNames = implode(', ', $namesToSearch);
+            } else {
+                $namesToSearch = array_filter(array_map('trim', explode(',', $victimNames)));
+            }
+        } else {
+            $newExtracted = $this->extractProperNouns(($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? ''));
+            $namesToSearch = !empty($newExtracted['full_names']) ? $newExtracted['full_names'] : [];
+            $victimNames = !empty($newExtracted['full_names']) ? implode(', ', $newExtracted['full_names']) : null;
+        }
+
         // --- Clasificación de Movilidades (Vehículos/Actores) ---
-        $vehicles = $this->resolveVehicleParticipation(
-            $validated['titulo'] ?? '',
-            $validated['descripcion'] ?? ''
-        );
+        $vehicles = [];
+        foreach (['has_car', 'has_pickup', 'has_utility', 'has_motorcycle', 'has_truck', 'has_bus', 'has_pedestrian', 'has_bicycle'] as $field) {
+            $vehicles[$field] = $request->has($field) ? (bool) $request->input($field) : null;
+        }
+        
+        // Si no se pasaron todos o algunos, resolver con la función local
+        if (collect($vehicles)->every(fn($v) => is_null($v))) {
+            $vehicles = $this->resolveVehicleParticipation(
+                $validated['titulo'] ?? '',
+                $validated['descripcion'] ?? ''
+            );
+        } else {
+            // Rellenar con false los nulls restantes
+            foreach ($vehicles as $key => $val) {
+                if (is_null($val)) {
+                    $vehicles[$key] = false;
+                }
+            }
+        }
 
         // --- Lógica de Asociación de Fallecimiento Post-Evento ---
         // Si el reporte actual es fatal, intentamos vincularlo a un accidente previo
@@ -416,10 +456,6 @@ class IncidentController extends Controller
                 ->contains(fn($word) => str_contains(strtolower($validated['etiqueta']), $word));
 
             if ($isAccident) {
-                // Extraer nombres de víctimas del reporte actual para la búsqueda cruzada amplia
-                $newExtracted = $this->extractProperNouns(($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? ''));
-                $victimNames = !empty($newExtracted['full_names']) ? implode(', ', $newExtracted['full_names']) : null;
-                $namesToSearch = !empty($newExtracted['full_names']) ? $newExtracted['full_names'] : [];
 
                 $similarIncident = null;
 
@@ -524,9 +560,7 @@ class IncidentController extends Controller
             ])
             ->get();
 
-        // Extraer nombres de víctimas del nuevo reporte para comparar y persistir
-        $newExtracted = $this->extractProperNouns(($validated['titulo'] ?? '') . ' ' . ($validated['descripcion'] ?? ''));
-        $victimNames = !empty($newExtracted['full_names']) ? implode(', ', $newExtracted['full_names']) : null;
+
 
         $fuzzyDuplicate = null;
         foreach ($candidates as $candidate) {
@@ -611,7 +645,7 @@ class IncidentController extends Controller
             $existingNames = array_map('trim', explode(',', $fuzzyDuplicate->victim_names ?? ''));
             $existingNames = array_filter($existingNames); // remover vacíos
             
-            $newNames = $newExtracted['full_names'] ?? [];
+            $newNames = $namesToSearch;
 
             $mergedNames = $existingNames;
             foreach ($newNames as $newName) {
