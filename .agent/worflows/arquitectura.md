@@ -14,7 +14,7 @@
 * **Pre-Filtrado Local por Titular:** Los scrapers escanean RSS y HTML de medios sanjuaninos. Antes de descargar el cuerpo del artículo (deep fetch), se evalúa el título y la descripción corta usando las reglas de exclusión y palabras clave de incidentes locales de Python.
 * **Cola Desacoplada (`raw_articles`):** 
   * Si el artículo califica como un posible incidente, se realiza el deep fetch y se guarda en `raw_articles` con estado `'queued'`.
-  * Si no califica (noticias de política, deportes o hechos de violencia familiar/delincuencia no viales), se guarda directamente con estado `'ignored'` y cuerpo vacío, ahorrando llamadas de red.
+  * Si no califica (noticias de política, deportes o hechos de violencia familiar/delincuencia no viales), se descarta de inmediato y no se guarda en la base de datos, evitando la acumulación de datos innecesarios en la cola.
   * Si ocurre un error de API o timeout en fases subsiguientes, el estado se cambia a `'failed'` para reintentos posteriores.
 
 ### 2. Procesamiento Diferido (Python + APIs)

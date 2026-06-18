@@ -33,8 +33,7 @@ Para minimizar el consumo de recursos de red y costos de API, la ingesta opera e
 * Se extrae el título y la descripción corta de la fuente (RSS o HTML selector).
 * Se ejecuta localmente `classify_article_with_python_rules(title, description, None, rule)`:
   * **Si califica como posible incidente:** Se descarga el cuerpo del artículo (`fetch_article_text`), y se guarda en `raw_articles` con estado `'queued'`.
-  * **Si no califica (policiales de robo, drogas, violencia familiar, política, deportes, etc.):** Se omite la descarga del cuerpo y se guarda directamente en `raw_articles` con estado `'ignored'`.
-* Las siguientes corridas del scraper omitirán estas URLs de inmediato gracias a `is_url_processed()`.
+  * **Si no califica (policiales de robo, drogas, violencia familiar, política, deportes, etc.):** Se omite la descarga del cuerpo por completo y la noticia no se almacena en la base de datos, evitando el crecimiento desmedido de la tabla.
 
 ### Paso 2: Procesamiento Diferido y Envío a API
 * El script lee únicamente las noticias con estado `'queued'` en `raw_articles`.
