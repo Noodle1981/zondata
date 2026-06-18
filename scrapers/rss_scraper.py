@@ -1417,17 +1417,14 @@ def scrape_html():
                         
                         potential_category = classify_article_with_python_rules(title, desc, None, rule)
                         body_text = ""
-                        status = 'queued'
                         
                         if potential_category:
                             deep_fetch_enabled = rule.get("deep_fetch", True)
                             if deep_fetch_enabled and link and link.startswith("http"):
                                 body_text = fetch_article_text(link)
+                            save_raw_article(title, desc, body_text, link, medio, status='queued')
                         else:
                             print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
-                            status = 'ignored'
-                        
-                        save_raw_article(title, desc, body_text, link, medio, status=status)
             except Exception as e:
                 print(f"Error procesando HTML de {domain} - {scrape_url}: {e}")
 
@@ -1461,17 +1458,14 @@ def scrape_rss():
                         if title:
                             potential_category = classify_article_with_python_rules(title, desc, None, rule)
                             body_text = ""
-                            status = 'queued'
                             
                             if potential_category:
                                 deep_fetch_enabled = rule.get("deep_fetch", True)
                                 if deep_fetch_enabled and link and link.startswith("http"):
                                     body_text = fetch_article_text(link)
+                                save_raw_article(title, desc, body_text, link, fuente_nombre, pub_date_str, status='queued')
                             else:
                                 print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
-                                status = 'ignored'
-                            
-                            save_raw_article(title, desc, body_text, link, fuente_nombre, pub_date_str, status=status)
             except Exception as e:
                 print(f"Error procesando el feed {feed_url}: {e}")
 
