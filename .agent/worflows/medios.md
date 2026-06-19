@@ -6,7 +6,7 @@ Este documento detalla la configuración del motor de scraping híbrido (RSS + H
 
 ## 1. Fuentes de Datos (Scraper Híbrido)
 
-El sistema utiliza un agente de usuario (User-Agent) que simula un navegador real (Googlebot) para evitar bloqueos por parte de los medios.
+El sistema utiliza un agente de usuario (User-Agent) que simula un navegador real estándar (Chrome) para evitar bloqueos por parte de los medios (especialmente Diario Huarpe, el cual bloquea bots como Googlebot con código de estado 403).
 
 | Medio | Método | URLs de Origen / Selectores | Estado |
 | :--- | :--- | :--- | :--- |

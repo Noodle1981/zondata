@@ -14,6 +14,10 @@ from geopy.exc import GeocoderTimedOut  # Kept for potential future use
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+class GeminiTransientError(Exception):
+    """Excepción lanzada cuando Gemini falla por problemas temporales de red, timeout o rate limit."""
+    pass
+
 def normalize_text(text):
     """Quita tildes/diacínticos para comparaciones robustas (e.g. 'arbol' == 'árbol')"""
     return ''.join(
@@ -43,13 +47,28 @@ def get_env_variable(key, default=None):
                 pass
     return default
 
-# Configuración Global - Usamos Googlebot para maximizar compatibilidad y evitar bloqueos 403
+# Configuración Global - Usamos un User-Agent de navegador estándar para evitar bloqueos 403 (e.g. de Diario Huarpe)
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'es-ES,es;q=0.9',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
     'Connection': 'keep-alive'
 }
+
+def get_headers(url):
+    """
+    Retorna los encabezados HTTP óptimos para cada medio.
+    - Algunos medios (e.g. Diario Huarpe) bloquean peticiones que simulan ser Googlebot (403).
+    - Otros medios (e.g. Diario Móvil debido a Cloudflare) bloquean agentes comunes de navegador sin entorno JS/TLS completo, pero permiten Googlebot por SEO.
+    """
+    if "diariomovil.info" in url:
+        return {
+            'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9',
+            'Connection': 'keep-alive'
+        }
+    return HEADERS
 
 API_URL = get_env_variable("APP_URL", "http://127.0.0.1:8000") + "/api/incidents"
 
@@ -218,13 +237,16 @@ def init_cache_db():
     except Exception as e:
         print(f"[ERROR] No se pudo inicializar la tabla de caché: {e}")
 
-def get_cached_coords(query):
+def get_cached_coords(query, conn=None):
     """
     Consulta si la query ya fue geolocalizada previamente.
     Retorna (latitude, longitude, is_approximate, source, location_type) o None.
     """
+    should_close = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
         cursor = conn.cursor()
         cursor.execute(
             "SELECT latitude, longitude, is_approximate, source, location_type "
@@ -232,60 +254,180 @@ def get_cached_coords(query):
             (query,)
         )
         row = cursor.fetchone()
-        conn.close()
+        if should_close:
+            conn.close()
         if row:
             return row[0], row[1], bool(row[2]), row[3], row[4]
     except Exception as e:
         print(f"[ERROR] Error al consultar caché: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
     return None
 
-def save_to_cache(query, lat, lon, is_approx, source='nominatim', location_type='GEOMETRIC_CENTER'):
+def save_to_cache(query, lat, lon, is_approx, source='google', location_type='GEOMETRIC_CENTER', conn=None):
     """
     Guarda una geolocalización en la caché para evitar futuras consultas de API.
     - source: 'nominatim' | 'google' | 'fallback'
     - location_type: valor de Google ('ROOFTOP', 'RANGE_INTERPOLATED', 'GEOMETRIC_CENTER', 'APPROXIMATE')
                      o 'GEOMETRIC_CENTER' por defecto para resultados de Nominatim.
     """
+    should_close = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
         cursor = conn.cursor()
         cursor.execute("""
             INSERT OR REPLACE INTO geocoding_cache
                 (query, latitude, longitude, is_approximate, source, location_type)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (query, lat, lon, int(is_approx), source, location_type))
-        conn.commit()
-        conn.close()
+        if should_close:
+            conn.commit()
+            conn.close()
     except Exception as e:
         print(f"[ERROR] Error al guardar en caché: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+def get_db_fallback_coords(text, conn=None):
+    """
+    Busca en el texto de la noticia si se menciona algún departamento o localidad,
+    y si coincide, consulta en la base de datos sus coordenadas (lat/lon).
+    Retorna (lat, lon, name_encontrado, tipo) o None.
+    """
+    should_close = False
+    try:
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
+        cursor = conn.cursor()
+        
+        # Obtener todos los departamentos con sus coordenadas
+        cursor.execute("SELECT id, name, lat, lon FROM departments WHERE lat IS NOT NULL")
+        depts = cursor.fetchall()
+        
+        # Buscar departamentos en el texto (prioridad departamentos)
+        # Normalizar el texto para hacer búsqueda robusta
+        text_n = normalize_text(text.lower())
+        
+        for dept_id, dept_name, lat, lon in depts:
+            dept_n = normalize_text(dept_name.lower())
+            # Exigir límites de palabra para evitar falsos positivos
+            pattern = r'\b' + re.escape(dept_n) + r'\b'
+            if re.search(pattern, text_n):
+                if should_close:
+                    conn.close()
+                return float(lat), float(lon), dept_name, 'department'
+                
+        # Si no hay departamento, buscar localidades
+        cursor.execute("SELECT id, name, lat, lon FROM localities WHERE lat IS NOT NULL")
+        locs = cursor.fetchall()
+        for loc_id, loc_name, lat, lon in locs:
+            loc_n = normalize_text(loc_name.lower())
+            if len(loc_n) > 4: # evitar palabras muy cortas
+                pattern = r'\b' + re.escape(loc_n) + r'\b'
+                if re.search(pattern, text_n):
+                    if should_close:
+                        conn.close()
+                    return float(lat), float(lon), loc_name, 'locality'
+                    
+        if should_close:
+            conn.close()
+    except Exception as e:
+        print(f"[FALLBACK-GEO][ERROR] Error buscando coordenadas de fallback: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return None
+
+def check_incident_precision(url, conn=None):
+    """
+    Verifica si existe un incidente para esta URL y si su ubicación es aproximada.
+    Retorna (exists, is_approximate, old_body)
+    """
+    should_close = False
+    try:
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
+        cursor = conn.cursor()
+        
+        # Buscar en incidents de Laravel
+        cursor.execute("SELECT id, is_approximate FROM incidents WHERE source_url = ?", (url,))
+        inc_row = cursor.fetchone()
+        
+        if not inc_row:
+            if should_close:
+                conn.close()
+            return False, False, None
+            
+        inc_id, is_approx = inc_row
+        
+        # Buscar el body_text anterior en raw_articles
+        cursor.execute("SELECT body FROM raw_articles WHERE source_url = ?", (url,))
+        art_row = cursor.fetchone()
+        old_body = art_row[0] if art_row else None
+        
+        if should_close:
+            conn.close()
+            
+        return True, bool(is_approx), old_body
+    except Exception as e:
+        print(f"[RE-EVAL][ERROR] Error al verificar precisión del incidente en la DB: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return False, False, None
 
 # Inicializar caché en el arranque (crea tabla y aplica migraciones)
 init_cache_db()
 
-def is_url_processed(url):
+def is_url_processed(url, conn=None):
     """Verifica en la BD local si la URL ya fue ingresada en incidents o raw_articles para evitar raspado redundante"""
+    should_close = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
         cursor = conn.cursor()
         
         # Verificar en incidents
         cursor.execute("SELECT id FROM incidents WHERE source_url = ?", (url,))
         row = cursor.fetchone()
         if row is not None:
-            conn.close()
+            if should_close:
+                conn.close()
             return True
             
         # Verificar en raw_articles
         cursor.execute("SELECT id FROM raw_articles WHERE source_url = ?", (url,))
         row = cursor.fetchone()
-        conn.close()
+        if should_close:
+            conn.close()
         return row is not None
     except Exception as e:
         print(f"[ERROR] Error al verificar URL duplicada en la DB: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
         return False
 
-def save_raw_article(title, description, body_text, source_url, source_name, pub_date_str=None, status='queued'):
+def save_raw_article(title, description, body_text, source_url, source_name, pub_date_str=None, status='queued', conn=None):
     """Inserta una noticia cruda en la tabla raw_articles de la base de datos SQLite"""
+    should_close = False
     try:
         # Formatear la fecha de publicación si existe
         formatted_date = None
@@ -304,19 +446,27 @@ def save_raw_article(title, description, body_text, source_url, source_name, pub
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
         cursor = conn.cursor()
         cursor.execute("""
             INSERT OR IGNORE INTO raw_articles 
                 (title, description, body, source_name, source_url, publish_date, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (title, description, body_text, source_name, source_url, formatted_date, status, now_str, now_str))
-        conn.commit()
-        conn.close()
+        if should_close:
+            conn.commit()
+            conn.close()
         print(f"[INGESTA][NUEVO] Guardada en raw_articles ({status}): '{title[:50]}...' ({source_name})")
         return True
     except Exception as e:
         print(f"[INGESTA][ERROR] Error al guardar artículo crudo en la DB: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
         return False
 
 def make_content_hash(title: str, pub_date_str: str | None) -> str:
@@ -328,32 +478,50 @@ def make_content_hash(title: str, pub_date_str: str | None) -> str:
     raw = f"{normalized}|{pub_date_str or ''}"
     return hashlib.md5(raw.encode('utf-8')).hexdigest()
 
-def is_content_processed(content_hash: str) -> bool:
+def is_content_processed(content_hash: str, conn=None) -> bool:
     """Retorna True si ya procesamos una noticia con este hash de contenido."""
+    should_close = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM content_hash_cache WHERE hash = ?", (content_hash,))
         row = cursor.fetchone()
-        conn.close()
+        if should_close:
+            conn.close()
         return row is not None
     except Exception as e:
         print(f"[ERROR] Error al verificar hash de contenido: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
         return False
 
-def save_content_hash(content_hash: str, source_url: str):
+def save_content_hash(content_hash: str, source_url: str, conn=None):
     """Persiste el hash de contenido para que futuras corridas no re-geocodifiquen la misma noticia."""
+    should_close = False
     try:
-        conn = sqlite3.connect(DB_PATH)
+        if conn is None:
+            conn = sqlite3.connect(DB_PATH)
+            should_close = True
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO content_hash_cache (hash, source_url) VALUES (?, ?)",
             (content_hash, source_url)
         )
-        conn.commit()
-        conn.close()
+        if should_close:
+            conn.commit()
+            conn.close()
     except Exception as e:
         print(f"[ERROR] Error al guardar hash de contenido: {e}")
+        if should_close and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def clean_locality_name(name):
     # Quitar parte después de guión (ej: "Vallecito - Paraje..." -> "Vallecito")
@@ -641,7 +809,14 @@ Cuerpo: {body_text}"""
             data = response.json()
             text = data['candidates'][0]['content']['parts'][0]['text'].strip()
             result = json.loads(text)
-            print(f"[GEMINI] Éxito. Extracción: {result}")
+            
+            # Obtener uso de tokens de los metadatos de respuesta de Google
+            usage = data.get("usageMetadata", {})
+            prompt_tokens = usage.get("promptTokenCount", 0)
+            candidates_tokens = usage.get("candidatesTokenCount", 0)
+            total_tokens = usage.get("totalTokenCount", 0)
+            
+            print(f"[GEMINI] Éxito (Tokens: In={prompt_tokens}, Out={candidates_tokens}, Total={total_tokens}). Extracción: {result}")
             return result
         else:
             print(f"[GEMINI][WARNING] HTTP {response.status_code} al consultar Gemini: {response.text}")
@@ -718,7 +893,7 @@ def resolve_geocode_google(query_str):
 
     return None
 
-def resolve_geocode(query_str, is_approx):
+def resolve_geocode(query_str, is_approx, conn=None):
     """
     Resuelve una geolocalización con el máximo de precisión posible.
     Embudo de 2 niveles (diseño simplificado para volúmenes bajos con alta calidad):
@@ -733,7 +908,7 @@ def resolve_geocode(query_str, is_approx):
     Retorna (latitude, longitude, is_approximate, source, location_type) o None.
     """
     # 1. Caché local → hit instantáneo, costo cero
-    cached = get_cached_coords(query_str)
+    cached = get_cached_coords(query_str, conn=conn)
     if cached is not None:
         lat, lon, approx, source, loc_type = cached
         print(f"[CACHE] HIT ({source} / {loc_type}): '{query_str}'")
@@ -746,7 +921,7 @@ def resolve_geocode(query_str, is_approx):
         final_approx = g_approx or is_approx
         save_to_cache(
             query_str, g_lat, g_lng, final_approx,
-            source='google', location_type=g_loc_type
+            source='google', location_type=g_loc_type, conn=conn
         )
         return g_lat, g_lng, final_approx, 'google', g_loc_type
 
@@ -1003,7 +1178,7 @@ def fetch_article_text(url):
     """Descarga el cuerpo de la noticia y extrae el texto de las etiquetas de párrafo, filtrando navegación/pie de página"""
     try:
         print(f"[DEEP FETCH] Buscando detalles en la URL: {url}")
-        response = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+        response = requests.get(url, headers=get_headers(url), timeout=10, verify=False)
         if response.status_code == 200:
             html_content = response.text
             
@@ -1149,7 +1324,7 @@ def classify_article_with_python_rules(title, description, body_text, rule=None)
     return detected_category
 
 
-def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", rule=None, pub_date_str=None, body_text=""):
+def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", rule=None, pub_date_str=None, body_text="", conn=None):
     title = clean_html(title)
     description = clean_html(description)
 
@@ -1175,7 +1350,7 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
 
     # ─── GUARDIA ANTI-DUPLICADO: Hash de contenido ────────────────────────────
     content_hash = make_content_hash(title, pub_date_str)
-    if is_content_processed(content_hash):
+    if is_content_processed(content_hash, conn=conn):
         print(f"[HASH-DUP] Noticia ya procesada (mismo título/fecha, distinta URL): '{title[:80]}...'")
         return None
 
@@ -1193,7 +1368,7 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
     if gemini_key:
         gemini_res = extract_location_with_gemini(title, description, body_text)
         if not gemini_res:
-            raise Exception("No se pudo obtener respuesta válida de Gemini API (posible error, límite o timeout)")
+            raise GeminiTransientError("No se pudo obtener respuesta válida de Gemini API (posible error, límite o timeout)")
 
     # Omitir retrospectivas o noticias históricas
     if gemini_res.get("is_retrospective_or_historical"):
@@ -1219,14 +1394,26 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
             print(f"[GEO][DISCARD] La ubicación extraída es desconocida o genérica: '{q_str}'. Saltando noticia.")
             return None
 
-        res = resolve_geocode(q_str, q_is_approx)
+        res = resolve_geocode(q_str, q_is_approx, conn=conn)
         if res:
             lat, lon, is_approx, source, loc_type = res
             resolved = True
 
     if not resolved:
-        # Si no se pudo geolocalizar la dirección extraída por Gemini, descartamos la noticia
-        print(f"[GEO][DISCARD] No se pudo geolocalizar la dirección '{gemini_res.get('location_query')}' extraída por Gemini. Saltando noticia.")
+        # Intentar fallback por departamento/localidad en base al texto completo (Bug P8)
+        text_to_search = title + " " + (description or "") + " " + (body_text or "")
+        fallback_coords = get_db_fallback_coords(text_to_search, conn=conn)
+        if fallback_coords:
+            lat, lon, matched_name, matched_type = fallback_coords
+            is_approx = True
+            source = 'db_fallback'
+            loc_type = 'APPROXIMATE'
+            print(f"[GEO][FALLBACK] No se geocodificó por Google, pero se resolvió al centro del {matched_type} '{matched_name}': {lat}, {lon}")
+            resolved = True
+
+    if not resolved:
+        # Si tampoco se pudo resolver por fallback, descartamos la noticia
+        print(f"[GEO][DISCARD] No se pudo geolocalizar de ninguna forma la noticia. Saltando.")
         return None
 
     # Si Gemini detecta una subcategoría específica válida, refinamos el resultado de Python
@@ -1243,7 +1430,7 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         event_date = pub_date - timedelta(days=1)
         
     # Persistir el hash ANTES de retornar para que futuras corridas no re-geocodifiquen esta noticia
-    save_content_hash(content_hash, link or '')
+    save_content_hash(content_hash, link or '', conn=conn)
 
     # Generar una descripción concisa para la UI (máximo ~500 caracteres)
     if description and len(description.strip()) >= 120:
@@ -1305,25 +1492,50 @@ def send_to_api(incident_data):
 def process_queued_articles():
     """Procesa todas las noticias de raw_articles con estado 'queued' utilizando analyze_news"""
     print(f"[{datetime.now()}] Iniciando procesamiento de noticias en cola (raw_articles)...")
+    
+    # ─── PURGA AUTOMÁTICA DE ARTÍCULOS VIEJOS TERMINALES (Bug P15) ──────────────
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, title, description, body, source_name, source_url, publish_date 
+            DELETE FROM raw_articles 
+            WHERE status IN ('processed', 'ignored')
+              AND updated_at < datetime('now', '-7 days')
+        """)
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted > 0:
+            print(f"[PROCESADOR][PURGE] {deleted} artículos antiguos purgados de raw_articles.")
+    except Exception as e:
+        print(f"[PROCESADOR][PURGE][ERROR] No se pudo purgar la base de datos: {e}")
+
+    # ─── OBTENER ARTÍCULOS PARA PROCESAR (Queued y Failed transitorios) (Bug P2) ──
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title, description, body, source_name, source_url, publish_date, status, error_message 
             FROM raw_articles 
             WHERE status = 'queued'
+               OR (status = 'failed' AND updated_at < datetime('now', '-10 minutes'))
         """)
         queued = cursor.fetchall()
-        conn.close()
+        # Mantenemos conn abierto para el resto del procesamiento (Bug P3)
     except Exception as e:
         print(f"[PROCESADOR][ERROR] No se pudo leer noticias de la DB: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
         return
 
     if not queued:
         print("[PROCESADOR] No hay noticias en cola para procesar.")
+        conn.close()
         return
 
-    print(f"[PROCESADOR] Se encontraron {len(queued)} noticias pendientes.")
+    print(f"[PROCESADOR] Se encontraron {len(queued)} noticias pendientes para procesar.")
     SCRAPER_RULES = load_rules()
 
     global gemini_calls_in_run, google_maps_calls_in_run
@@ -1331,8 +1543,8 @@ def process_queued_articles():
     google_maps_calls_in_run = 0
 
     for row in queued:
-        art_id, title, description, body_text, source_name, source_url, publish_date = row
-        print(f"[PROCESADOR][ARTICULO] Procesando ID {art_id}: '{title[:50]}...'")
+        art_id, title, description, body_text, source_name, source_url, publish_date, status, current_error = row
+        print(f"[PROCESADOR][ARTICULO] Procesando ID {art_id} (Estado: {status}): '{title[:50]}...'")
 
         # Intentar obtener la configuración para este dominio
         from urllib.parse import urlparse
@@ -1341,7 +1553,7 @@ def process_queued_articles():
         rule = get_source_rule(SCRAPER_RULES, domain)
 
         try:
-            # Procesar el artículo usando la lógica unificada de analyze_news
+            # Procesar el artículo usando la lógica unificada de analyze_news (Bug P3: pasar conn)
             incident = analyze_news(
                 title=title,
                 description=description,
@@ -1349,113 +1561,123 @@ def process_queued_articles():
                 fuente_nombre=source_name,
                 rule=rule,
                 pub_date_str=publish_date,
-                body_text=body_text
+                body_text=body_text,
+                conn=conn
             )
 
-            conn = sqlite3.connect(DB_PATH)
+            # Re-obtener cursor de la conexión compartida
             cursor = conn.cursor()
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if incident:
                 # Si clasifica como incidente y se geocodifica, enviar a Laravel API
                 send_to_api(incident)
                 # Actualizar estado a 'processed'
-                cursor.execute("UPDATE raw_articles SET status = 'processed', error_message = NULL, updated_at = ? WHERE id = ?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), art_id))
+                cursor.execute(
+                    "UPDATE raw_articles SET status = 'processed', error_message = NULL, updated_at = ? WHERE id = ?",
+                    (now_str, art_id)
+                )
             else:
                 # Si no clasifica como incidente, marcar como 'ignored'
-                cursor.execute("UPDATE raw_articles SET status = 'ignored', error_message = NULL, updated_at = ? WHERE id = ?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), art_id))
+                cursor.execute(
+                    "UPDATE raw_articles SET status = 'ignored', error_message = NULL, updated_at = ? WHERE id = ?",
+                    (now_str, art_id)
+                )
 
             conn.commit()
-            conn.close()
 
         except Exception as e:
             error_msg = str(e)
             print(f"[PROCESADOR][ERROR] Error procesando artículo ID {art_id}: {error_msg}")
+            
+            # Contar reintentos en el error_message (Bug P1 & P2)
             try:
-                conn = sqlite3.connect(DB_PATH)
+                attempts = 1
+                if status == 'failed' and current_error:
+                    # Buscar el patrón [Intento X/3]
+                    m = re.match(r"^\[Intento (\d+)/3\]", current_error)
+                    if m:
+                        attempts = int(m.group(1)) + 1
+                
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                # Si superamos el límite de 3 intentos, lo marcamos como 'failed_permanently'
+                if attempts > 3:
+                    final_status = 'failed_permanently'
+                    final_msg = f"[Límite reintentos] {error_msg}"
+                    print(f"[PROCESADOR][ARTICULO] ID {art_id} superó el límite de 3 reintentos. Marcado como 'failed_permanently'.")
+                else:
+                    final_status = 'failed'
+                    final_msg = f"[Intento {attempts}/3] {error_msg}"
+                
                 cursor = conn.cursor()
-                cursor.execute("UPDATE raw_articles SET status = 'failed', error_message = ?, updated_at = ? WHERE id = ?", (error_msg, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), art_id))
+                cursor.execute(
+                    "UPDATE raw_articles SET status = ?, error_message = ?, updated_at = ? WHERE id = ?",
+                    (final_status, final_msg, now_str, art_id)
+                )
                 conn.commit()
-                conn.close()
             except Exception as e2:
-                print(f"[PROCESADOR][ERROR] No se pudo guardar el estado de error en la DB: {e2}")
+                print(f"[PROCESADOR][ERROR] No se pudo guardar el estado de error en la DB para ID {art_id}: {e2}")
 
         # Pequeña pausa para no saturar APIs si es procesado
         time.sleep(1)
 
+    # Cerrar la conexión compartida
+    try:
+        conn.close()
+    except Exception:
+        pass
     print(f"[{datetime.now()}] Procesamiento finalizado.")
 
 def scrape_html():
     print(f"[{datetime.now()}] Iniciando barrido HTML...")
     session = requests.Session()
     SCRAPER_RULES = load_rules()
-    for domain, source_config in SCRAPER_RULES["sources"].items():
-        rule = get_source_rule(SCRAPER_RULES, domain)
-        if rule["type"] != "html":
-            continue
-        scrape_urls = rule.get("scrape_urls", [])
-        for scrape_url in scrape_urls:
-            try:
-                medio = MEDIA_NAMES.get(domain, domain)
-                print(f"Scrapeando HTML: {medio} ({scrape_url})")
-                response = session.get(scrape_url, headers=HEADERS, timeout=15, verify=False)
-                if response.status_code == 200:
-                    html_text = response.text
-                    matches = re.finditer(rule['article_selector'], html_text, re.DOTALL)
-                    for match in matches:
-                        link = match.group(1)
-                        title = html.unescape(re.sub(r'<[^>]+>', '', match.group(2)).strip())
-                        desc = match.group(3).strip() if len(match.groups()) > 2 else ""
-                        desc = html.unescape(re.sub(r'<[^>]+>', '', desc))
-                        if not link.startswith('http'):
-                            from urllib.parse import urlparse
-                            parsed_uri = urlparse(scrape_url)
-                            base_domain = '{uri.scheme}://{uri.netloc}'.format(uri=parsed_uri)
-                            link = base_domain + link
-                        if rule["duplicate_check"] and link and is_url_processed(link):
-                            print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
-                            continue
-                        
-                        potential_category = classify_article_with_python_rules(title, desc, None, rule)
-                        body_text = ""
-                        
-                        if potential_category:
-                            deep_fetch_enabled = rule.get("deep_fetch", True)
-                            if deep_fetch_enabled and link and link.startswith("http"):
-                                body_text = fetch_article_text(link)
-                            save_raw_article(title, desc, body_text, link, medio, status='queued')
-                        else:
-                            print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
-            except Exception as e:
-                print(f"Error procesando HTML de {domain} - {scrape_url}: {e}")
-
-def scrape_rss():
-    print(f"[{datetime.now()}] Iniciando barrido de RSS...")
-    SCRAPER_RULES = load_rules()
-    for domain, source_config in SCRAPER_RULES["sources"].items():
-        rule = get_source_rule(SCRAPER_RULES, domain)
-        if rule["type"] != "rss":
-            continue
-        scrape_urls = rule.get("scrape_urls", [])
-        for feed_url in scrape_urls:
-            try:
-                fuente_nombre = MEDIA_NAMES.get(domain, "Noticias San Juan")
-                print(f"Leyendo: {fuente_nombre} ({feed_url})")
-                response = requests.get(feed_url, headers=HEADERS, timeout=15, verify=False)
-                if response.status_code == 200:
-                    root = ET.fromstring(response.content)
-                    for item in root.findall('.//item'):
-                        title_tag = item.find('title')
-                        desc_tag = item.find('description')
-                        title = html.unescape(title_tag.text if title_tag is not None and title_tag.text else '')
-                        desc = html.unescape(desc_tag.text if desc_tag is not None and desc_tag.text else '')
-                        link = item.find('link').text if item.find('link') is not None else ''
-                        pub_date_tag = item.find('pubDate')
-                        pub_date_str = pub_date_tag.text if pub_date_tag is not None else None
-                        
-                        if rule["duplicate_check"] and link and is_url_processed(link):
-                            print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
-                            continue
-                        if title:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        for domain, source_config in SCRAPER_RULES["sources"].items():
+            rule = get_source_rule(SCRAPER_RULES, domain)
+            if rule["type"] != "html":
+                continue
+            scrape_urls = rule.get("scrape_urls", [])
+            for scrape_url in scrape_urls:
+                try:
+                    medio = MEDIA_NAMES.get(domain, domain)
+                    print(f"Scrapeando HTML: {medio} ({scrape_url})")
+                    response = session.get(scrape_url, headers=get_headers(scrape_url), timeout=15, verify=False)
+                    if response.status_code == 200:
+                        html_text = response.text
+                        matches = re.finditer(rule['article_selector'], html_text, re.DOTALL)
+                        for match in matches:
+                            link = match.group(1)
+                            title = html.unescape(re.sub(r'<[^>]+>', '', match.group(2)).strip())
+                            desc = match.group(3).strip() if len(match.groups()) > 2 else ""
+                            desc = html.unescape(re.sub(r'<[^>]+>', '', desc))
+                            if not link.startswith('http'):
+                                from urllib.parse import urlparse
+                                parsed_uri = urlparse(scrape_url)
+                                base_domain = '{uri.scheme}://{uri.netloc}'.format(uri=parsed_uri)
+                                link = base_domain + link
+                            if rule["duplicate_check"] and link:
+                                inc_exists, inc_is_approx, old_body = check_incident_precision(link, conn=conn)
+                                if inc_exists:
+                                    if inc_is_approx:
+                                        new_body = fetch_article_text(link)
+                                        if new_body and old_body:
+                                            if (len(new_body) - len(old_body)) >= 15:
+                                                print(f"[RE-EVAL][DISPARADOR] Noticia ampliada detectada para {link} (Cuerpo creció de {len(old_body)} a {len(new_body)} chars). Re-encolando...")
+                                                cursor = conn.cursor()
+                                                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                                cursor.execute("""
+                                                    UPDATE raw_articles 
+                                                    SET body = ?, status = 'queued', error_message = NULL, updated_at = ? 
+                                                    WHERE source_url = ?
+                                                """, (new_body, now_str, link))
+                                                conn.commit()
+                                                continue
+                                    print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
+                                    continue
+                            
                             potential_category = classify_article_with_python_rules(title, desc, None, rule)
                             body_text = ""
                             
@@ -1463,11 +1685,80 @@ def scrape_rss():
                                 deep_fetch_enabled = rule.get("deep_fetch", True)
                                 if deep_fetch_enabled and link and link.startswith("http"):
                                     body_text = fetch_article_text(link)
-                                save_raw_article(title, desc, body_text, link, fuente_nombre, pub_date_str, status='queued')
+                                save_raw_article(title, desc, body_text, link, medio, status='queued', conn=conn)
                             else:
                                 print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
-            except Exception as e:
-                print(f"Error procesando el feed {feed_url}: {e}")
+                except Exception as e:
+                    print(f"Error procesando HTML de {domain} - {scrape_url}: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+def scrape_rss():
+    print(f"[{datetime.now()}] Iniciando barrido de RSS...")
+    SCRAPER_RULES = load_rules()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        for domain, source_config in SCRAPER_RULES["sources"].items():
+            rule = get_source_rule(SCRAPER_RULES, domain)
+            if rule["type"] != "rss":
+                continue
+            scrape_urls = rule.get("scrape_urls", [])
+            for feed_url in scrape_urls:
+                try:
+                    fuente_nombre = MEDIA_NAMES.get(domain, "Noticias San Juan")
+                    print(f"Leyendo: {fuente_nombre} ({feed_url})")
+                    response = requests.get(feed_url, headers=get_headers(feed_url), timeout=15, verify=False)
+                    if response.status_code == 200:
+                        root = ET.fromstring(response.content)
+                        for item in root.findall('.//item'):
+                            title_tag = item.find('title')
+                            desc_tag = item.find('description')
+                            title = html.unescape(title_tag.text if title_tag is not None and title_tag.text else '')
+                            desc = html.unescape(desc_tag.text if desc_tag is not None and desc_tag.text else '')
+                            link = item.find('link').text if item.find('link') is not None else ''
+                            pub_date_tag = item.find('pubDate')
+                            pub_date_str = pub_date_tag.text if pub_date_tag is not None else None
+                            
+                            if rule["duplicate_check"] and link:
+                                inc_exists, inc_is_approx, old_body = check_incident_precision(link, conn=conn)
+                                if inc_exists:
+                                    if inc_is_approx:
+                                        new_body = fetch_article_text(link)
+                                        if new_body and old_body:
+                                            if (len(new_body) - len(old_body)) >= 15:
+                                                print(f"[RE-EVAL][DISPARADOR] Noticia ampliada detectada para {link} (Cuerpo creció de {len(old_body)} a {len(new_body)} chars). Re-encolando...")
+                                                cursor = conn.cursor()
+                                                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                                cursor.execute("""
+                                                    UPDATE raw_articles 
+                                                    SET body = ?, status = 'queued', error_message = NULL, updated_at = ? 
+                                                    WHERE source_url = ?
+                                                """, (new_body, now_str, link))
+                                                conn.commit()
+                                                continue
+                                    print(f"[DB DUPLICADO] Saltando URL ya procesada: {link}")
+                                    continue
+                            if title:
+                                potential_category = classify_article_with_python_rules(title, desc, None, rule)
+                                body_text = ""
+                                
+                                if potential_category:
+                                    deep_fetch_enabled = rule.get("deep_fetch", True)
+                                    if deep_fetch_enabled and link and link.startswith("http"):
+                                        body_text = fetch_article_text(link)
+                                    save_raw_article(title, desc, body_text, link, fuente_nombre, pub_date_str, status='queued', conn=conn)
+                                else:
+                                    print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
+                except Exception as e:
+                    print(f"Error procesando el feed {feed_url}: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     import argparse

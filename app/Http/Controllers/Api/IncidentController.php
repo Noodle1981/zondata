@@ -308,10 +308,44 @@ class IncidentController extends Controller
             ['name' => ucfirst($validated['etiqueta'])]
         );
 
-        // Prevenir duplicados directos (Misma URL o Mismo Título)
+        // Prevenir duplicados directos (Misma URL o Mismo Título) o actualizar precisión si es re-evaluado
         if (!empty($validated['fuente_url'])) {
             $existing = Incident::where('source_url', $validated['fuente_url'])->first();
             if ($existing) {
+                $existingIsApprox = (bool) $existing->is_approximate;
+                $newIsApprox = (bool) ($validated['is_approximate'] ?? false);
+                
+                $precisionRanks = [
+                    'ROOFTOP' => 4,
+                    'RANGE_INTERPOLATED' => 3,
+                    'GEOMETRIC_CENTER' => 2,
+                    'APPROXIMATE' => 1
+                ];
+                $existingRank = $precisionRanks[$existing->location_type ?? 'GEOMETRIC_CENTER'] ?? 2;
+                $newRank = $precisionRanks[$validated['location_type'] ?? 'GEOMETRIC_CENTER'] ?? 2;
+                
+                $updateLocation = false;
+                if ($newRank > $existingRank) {
+                    $updateLocation = true;
+                } elseif ($existingIsApprox && !$newIsApprox) {
+                    $updateLocation = true;
+                }
+                
+                if ($updateLocation) {
+                    $existing->update([
+                        'latitude'       => $validated['latitud'],
+                        'longitude'      => $validated['longitud'],
+                        'is_approximate' => $newIsApprox,
+                        'source'         => $validated['source'] ?? 'google',
+                        'location_type'  => $validated['location_type'] ?? 'GEOMETRIC_CENTER',
+                    ]);
+                    
+                    return response()->json([
+                        'message' => 'Incidente existente actualizado con precisión de ubicación mejorada',
+                        'incident' => $existing
+                    ], 200);
+                }
+                
                 return response()->json([
                     'message' => 'Incidente duplicado (URL ya registrada)',
                     'incident' => $existing

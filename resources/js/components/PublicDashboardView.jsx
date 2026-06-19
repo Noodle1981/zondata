@@ -1,930 +1,670 @@
-import React, { useState, useEffect } from 'react';
-import { 
-    Database, 
-    Car, 
-    Flame, 
-    Wind, 
-    Activity, 
-    TrendingUp, 
-    ArrowLeft, 
-    Check,
-    BarChart2,
-    Calendar,
-    MapPin,
-    Clock,
-    UserCheck,
-    AlertTriangle,
-    ShieldAlert,
-    Route,
-    RotateCw,
-    Building2,
-    Trees,
-    Bike,
-    Truck,
-    Bus,
-    Footprints,
-    Layers,
-    User,
-    Gauge,
-    CarFront,
-    Home,
-    Wheat,
-    Store,
-    Factory,
-    Leaf,
-    Zap,
-    ZapOff,
-    Flag,
-    Skull,
-    Briefcase
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+    Database, Car, Flame, Wind, Activity, TrendingUp, ArrowLeft,
+    BarChart2, MapPin, AlertTriangle, ShieldAlert, Route, RotateCw,
+    Building2, Trees, Bike, Truck, Bus, Footprints, Layers, User,
+    Gauge, CarFront, Home, Wheat, Store, Factory, Leaf, Zap, ZapOff,
+    Flag, Skull, Briefcase, AlertCircle, Calendar, ChevronDown, RefreshCw,
+    TrendingDown, Minus, Heart, Clock, Info
 } from 'lucide-react';
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const normalize = (text = '') =>
+    text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+const matchesWords = (incident, words) => {
+    const text = normalize((incident.title || '') + ' ' + (incident.description || ''));
+    return words.some(w => text.includes(normalize(w)));
+};
+
+const getCategoryType = (incident) => {
+    const slug = incident.category?.slug || '';
+    if (['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k))) return 'traffic';
+    if (slug.includes('incendio') || slug.includes('siniestro')) return 'fire';
+    if (['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug.includes(k))) return 'wind';
+    return 'other';
+};
+
+const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+const SAN_JUAN_DEPARTMENTS = [
+    'Capital','Chimbas','Rawson','Rivadavia','Santa Lucía',
+    'Pocito','Sarmiento','Albardón','Angaco','Caucete',
+    'San Martín','9 de Julio','25 de Mayo','Ullum','Zonda',
+    'Jáchal','Iglesia','Calingasta','Valle Fértil'
+];
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+const KpiCard = ({ label, value, subtext, color = 'white', icon: Icon, pulse = false, border }) => (
+    <div className={`bg-[#111A2E] p-5 rounded-2xl border ${border || 'border-white/8'} text-left flex flex-col gap-1`}>
+        <div className="flex items-center justify-between">
+            <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">{label}</span>
+            {Icon && <Icon size={14} className="text-gray-500" />}
+        </div>
+        <div className="flex items-end gap-2 mt-1">
+            <h4 className={`text-3xl font-black leading-none`} style={{ color }}>{value}</h4>
+            {pulse && <span className="mb-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
+        </div>
+        <span className="text-[10px] text-gray-500 font-medium">{subtext}</span>
+    </div>
+);
+
+const SectionCard = ({ title, children, accent }) => (
+    <div className={`bg-[#111A2E] p-6 rounded-2xl border border-white/5 text-left`}>
+        {title && (
+            <h3 className="text-sm font-black uppercase tracking-wider mb-5" style={{ color: accent || 'white' }}>
+                {title}
+            </h3>
+        )}
+        {children}
+    </div>
+);
+
+const TypeCard = ({ icon: Icon, label, count, accent }) => (
+    <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
+        <div className="p-2.5 rounded-xl shrink-0"
+            style={{ background: accent + '18', border: `1px solid ${accent}30`, color: accent }}>
+            <Icon size={22} />
+        </div>
+        <div>
+            <p className="text-[11px] text-gray-400 font-bold">{label}</p>
+            <p className="text-2xl font-black text-white">{count}</p>
+        </div>
+    </div>
+);
+
+// Horizontal bar chart row
+const BarRow = ({ label, count, pct, accent, maxCount }) => (
+    <div className="flex items-center gap-3 group">
+        <span className="text-[11px] text-gray-400 font-bold w-28 shrink-0 truncate">{label}</span>
+        <div className="flex-1 h-5 bg-white/5 rounded-full overflow-hidden">
+            <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: count === 0 ? '2px' : pct, backgroundColor: accent || '#002D62' }}
+            />
+        </div>
+        <span className="text-[11px] font-black text-white w-6 text-right shrink-0">{count}</span>
+    </div>
+);
+
+// Vertical bar chart column
+const DayBar = ({ label, count, pct, accent, isToday }) => (
+    <div className="flex-1 min-w-[9px] sm:min-w-[14px] flex flex-col items-center gap-1 h-full justify-end relative group">
+        <div className="text-[9px] font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5 z-10 bg-[#0B1528] px-1.5 py-0.5 rounded border border-white/10 whitespace-nowrap">
+            {count}
+        </div>
+        <div
+            className={`w-full rounded-t-sm transition-all group-hover:brightness-125 ${isToday ? 'ring-1 ring-white/30' : ''}`}
+            style={{ height: count === 0 ? '2px' : pct, backgroundColor: accent || '#002D62', minHeight: count > 0 ? '4px' : '2px' }}
+        />
+        <span className={`text-[7px] sm:text-[9px] font-bold block mt-0.5 ${isToday ? 'text-white' : 'text-gray-500'}`}>
+            {label}
+        </span>
+    </div>
+);
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 
 const PublicDashboardView = () => {
     const [activeSection, setActiveSection] = useState('general');
     const [incidents, setIncidents] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [periodDays, setPeriodDays] = useState(30);
+    const [lastUpdated, setLastUpdated] = useState(null);
 
-    useEffect(() => {
-        // Fetch real incidents of the last 30 days from backend API
-        fetch('/api/incidents?range=month')
+    const fetchData = () => {
+        setLoading(true);
+        const range = periodDays === 7 ? 'week' : 'month';
+        fetch(`/api/incidents?range=${range}`)
             .then(res => res.json())
             .then(data => {
                 const items = data?.data ?? data;
                 setIncidents(Array.isArray(items) ? items : []);
+                setLastUpdated(new Date());
                 setLoading(false);
             })
-            .catch(err => {
-                console.error("Error fetching dashboard incidents:", err);
-                setIncidents([]);
-                setLoading(false);
-            });
-    }, []);
-
-    // Robust category matching logic (replicates MapComponent)
-    const getFilteredIncidents = (type) => {
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth(); // 0-indexed
-
-        const monthlyIncidents = incidents.filter(i => {
-            if (!i.event_date) return false;
-            const parts = i.event_date.split('-');
-            if (parts.length < 2) return false;
-            const year = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1; // 0-indexed
-            return year === currentYear && month === currentMonth;
-        });
-
-        if (type === 'general') return monthlyIncidents;
-        
-        return monthlyIncidents.filter(i => {
-            const slug = i.category?.slug || '';
-            if (type === 'traffic') {
-                return ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k));
-            }
-            if (type === 'fire') {
-                return slug.includes('incendio') || slug.includes('siniestro');
-            }
-            if (type === 'wind') {
-                return ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug.includes(k));
-            }
-            return true;
-        });
+            .catch(() => { setIncidents([]); setLoading(false); });
     };
 
-    const currentFilterIncidents = getFilteredIncidents(activeSection);
+    useEffect(() => { fetchData(); }, [periodDays]);
 
-    // ==========================================
-    // METRICS CALCULATORS FOR TRANSIT (Scraping)
-    // ==========================================
-    const trafficIncidents = getFilteredIncidents('traffic');
+    // ── Derived Data ─────────────────────────────────────────────────────────
 
-    // 1. Fatality Index
-    const fatalTrafficCount = trafficIncidents.filter(i => i.is_fatal).length;
-    const fatalityIndex = trafficIncidents.length > 0 
-        ? Math.round((fatalTrafficCount / trafficIncidents.length) * 100) 
-        : 0;
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
 
-    // 2. Critical Hours
-    const calculateCriticalHours = () => {
-        if (trafficIncidents.length === 0) return '18-20 hs (Retorno)';
-        const hours = trafficIncidents.map(i => {
-            if (!i.event_date) return 18;
-            return new Date(i.event_date).getHours();
-        });
-        
-        // Count frequencies in bins
+    // Filter by current month
+    const monthlyIncidents = useMemo(() => incidents.filter(i => {
+        if (!i.event_date) return false;
+        const parts = i.event_date.split('-');
+        return parseInt(parts[0]) === currentYear && parseInt(parts[1]) - 1 === currentMonth;
+    }), [incidents, currentYear, currentMonth]);
+
+    const allIncidents = periodDays === 7 ? incidents : monthlyIncidents;
+
+    const trafficIncidents = useMemo(() => allIncidents.filter(i => getCategoryType(i) === 'traffic'), [allIncidents]);
+    const fireIncidents    = useMemo(() => allIncidents.filter(i => getCategoryType(i) === 'fire'), [allIncidents]);
+    const windIncidents    = useMemo(() => allIncidents.filter(i => getCategoryType(i) === 'wind'), [allIncidents]);
+
+    const currentFilterIncidents = useMemo(() => {
+        if (activeSection === 'traffic') return trafficIncidents;
+        if (activeSection === 'fire') return fireIncidents;
+        if (activeSection === 'wind') return windIncidents;
+        return allIncidents;
+    }, [activeSection, allIncidents, trafficIncidents, fireIncidents, windIncidents]);
+
+    // KPI: Today's count
+    const todayCount = useMemo(() =>
+        allIncidents.filter(i => i.event_date?.slice(0, 10) === todayStr).length,
+        [allIncidents, todayStr]
+    );
+
+    // KPI: Fatales
+    const totalFatales = useMemo(() => allIncidents.filter(i => i.is_fatal).length, [allIncidents]);
+
+    // KPI: Heridos (keyword-based from descriptions — labeled as "estimado")
+    const totalHeridos = useMemo(() =>
+        allIncidents.filter(i => !i.is_fatal && matchesWords(i, ['herido','herida','heridos','heridas','lesionado','lesionada','hospitalizado','trasladado','golpes','politraumatismo'])).length,
+        [allIncidents]
+    );
+
+    // ── Traffic metrics ───────────────────────────────────────────────────────
+
+    const fatalTrafficCount = useMemo(() => trafficIncidents.filter(i => i.is_fatal).length, [trafficIncidents]);
+    const fatalityIndex = trafficIncidents.length > 0 ? Math.round((fatalTrafficCount / trafficIncidents.length) * 100) : 0;
+
+    const criticalHour = useMemo(() => {
+        if (trafficIncidents.length === 0) return '—';
         const bins = {
-            '06-12 hs (Mañana)': hours.filter(h => h >= 6 && h < 12).length,
-            '12-18 hs (Mediodía)': hours.filter(h => h >= 12 && h < 18).length,
-            '18-20 hs (Retorno)': hours.filter(h => h >= 18 && h < 20).length,
-            '20-06 hs (Noche)': hours.filter(h => h >= 20 || h < 6).length,
+            '06–12 hs (Mañana)':   0,
+            '12–18 hs (Mediodía)': 0,
+            '18–21 hs (Retorno)':  0,
+            '21–06 hs (Noche)':    0,
         };
-
-        let maxBin = '18-20 hs (Retorno)';
-        let maxCount = -1;
-        Object.entries(bins).forEach(([binName, count]) => {
-            if (count > maxCount) {
-                maxCount = count;
-                maxBin = binName;
-            }
+        trafficIncidents.forEach(i => {
+            const h = new Date(i.event_date).getHours();
+            if (h >= 6  && h < 12) bins['06–12 hs (Mañana)']++;
+            else if (h >= 12 && h < 18) bins['12–18 hs (Mediodía)']++;
+            else if (h >= 18 && h < 21) bins['18–21 hs (Retorno)']++;
+            else bins['21–06 hs (Noche)']++;
         });
-        return maxBin;
-    };
-    const criticalHour = calculateCriticalHours();
+        return Object.entries(bins).sort((a, b) => b[1] - a[1])[0][0];
+    }, [trafficIncidents]);
 
-    // Helper: text scanner
-    const matchesKeywords = (incident, words) => {
-        const text = ((incident.title || '') + ' ' + (incident.description || '')).toLowerCase();
-        return words.some(w => text.includes(w));
-    };
+    const roadCounts = useMemo(() => ({
+        rutas:          trafficIncidents.filter(i => i.road_type === 'Ruta').length,
+        circunvalacion: trafficIncidents.filter(i => i.road_type === 'Circunvalación').length,
+        urbana:         trafficIncidents.filter(i => i.road_type === 'Urbana').length,
+        alejada:        trafficIncidents.filter(i => i.road_type === 'Alejada').length,
+        otro:           trafficIncidents.filter(i => !i.road_type || i.road_type === 'Otro').length,
+    }), [trafficIncidents]);
 
-    // 3. Roads & Types of Crash Counts
-    const routeAccidents = trafficIncidents.filter(i => i.road_type === 'Ruta').length;
-    const circunvalacionAccidents = trafficIncidents.filter(i => i.road_type === 'Circunvalación').length;
-    const urbanAccidents = trafficIncidents.filter(i => i.road_type === 'Urbana').length;
-    const ruralAccidents = trafficIncidents.filter(i => i.road_type === 'Alejada').length;
-
-    // 4. Vehicle Type Counters
-    const vehicleCounts = {
-        autos: trafficIncidents.filter(i => i.has_car).length,
+    const vehicleCounts = useMemo(() => ({
+        autos:      trafficIncidents.filter(i => i.has_car).length,
         camionetas: trafficIncidents.filter(i => i.has_pickup).length,
-        utilitarios: trafficIncidents.filter(i => i.has_utility).length,
-        motos: trafficIncidents.filter(i => i.has_motorcycle).length,
-        camiones: trafficIncidents.filter(i => i.has_truck).length,
+        motos:      trafficIncidents.filter(i => i.has_motorcycle).length,
+        camiones:   trafficIncidents.filter(i => i.has_truck).length,
         colectivos: trafficIncidents.filter(i => i.has_bus).length,
-        peatones: trafficIncidents.filter(i => i.has_pedestrian).length,
-        bicicletas: trafficIncidents.filter(i => i.has_bicycle).length
-    };
+        peatones:   trafficIncidents.filter(i => i.has_pedestrian).length,
+        bicicletas: trafficIncidents.filter(i => i.has_bicycle).length,
+        utilitarios:trafficIncidents.filter(i => i.has_utility).length,
+    }), [trafficIncidents]);
 
-    // 5. Animal-caused crashes
-    const animalCrashes = trafficIncidents.filter(i => matchesKeywords(i, ['caballo', 'vaca', 'perro', 'can ', 'equino', 'animal', 'jauría', 'jauria'])).length;
+    // ── Fire metrics ──────────────────────────────────────────────────────────
 
-    // 6. Genders count (based on text descriptions)
-    const maleMentions = trafficIncidents.filter(i => matchesKeywords(i, ['el conductor', 'un hombre', 'un joven', 'masculino', 'sujeto', 'señor'])).length;
-    const femaleMentions = trafficIncidents.filter(i => matchesKeywords(i, ['la conductora', 'una mujer', 'una joven', 'femenino', 'femenina', 'señora'])).length;
-    
-    const totalGenders = maleMentions + femaleMentions;
-    const malePercent = totalGenders > 0 ? Math.round((maleMentions / totalGenders) * 100) : 70; // 70% default mock ratio if text is neutral
-    const femalePercent = totalGenders > 0 ? 100 - malePercent : 30;
+    const fireCounts = useMemo(() => {
+        const c = {
+            pastizales: fireIncidents.filter(i => matchesWords(i, ['pastizal','maleza','baldío','baldio','campo','yuyos','pasto','matorral'])).length,
+            viviendas:  fireIncidents.filter(i => matchesWords(i, ['casa','vivienda','hogar','departamento','habitación','domicilio','casilla','edificio','residencia'])).length,
+            vehiculos:  fireIncidents.filter(i => matchesWords(i, ['vehículo','vehiculo','auto','camión','camion','moto','colectivo','furgón','utilitario'])).length,
+            comercios:  fireIncidents.filter(i => matchesWords(i, ['comercio','local','depósito','deposito','taller','negocio','empresa','almacén'])).length,
+            industrias: fireIncidents.filter(i => matchesWords(i, ['fábrica','fabrica','galpón','galpon','industrial','planta','parque industrial'])).length,
+            forestales: fireIncidents.filter(i => matchesWords(i, ['bosque','árbol','arbol','reserva','cerro','montaña','sierra'])).length,
+            rurales:    fireIncidents.filter(i => matchesWords(i, ['finca','parral','cultivo','chacra','viñedo'])).length,
+        };
+        c.otros = Math.max(0, fireIncidents.length - Object.values(c).reduce((a, b) => a + b, 0));
+        return c;
+    }, [fireIncidents]);
 
-    // ==========================================
-    // METRICS CALCULATORS FOR FIRE (Scraping)
-    // ==========================================
-    const fireIncidents = getFilteredIncidents('fire');
-    const fireCounts = {
-        pastizales: fireIncidents.filter(i => matchesKeywords(i, ['pastizales', 'maleza', 'baldío', 'baldio', 'campo', 'hierba', 'yuyos', 'cañaveral', 'pasto', 'matorral'])).length,
-        viviendas: fireIncidents.filter(i => matchesKeywords(i, ['casa', 'vivienda', 'hogar', 'departamento', 'habitación', 'domicilio', 'casilla', 'techo', 'edificio', 'residencia'])).length,
-        comercios: fireIncidents.filter(i => matchesKeywords(i, ['comercio', 'local', 'depósito', 'deposito', 'taller', 'negocio', 'empresa', 'supermercado', 'almacén', 'almacen'])).length,
-        industrias: fireIncidents.filter(i => matchesKeywords(i, ['fábrica', 'fabrica', 'galpón', 'galpon', 'industrial', 'planta', 'parque industrial'])).length,
-        vehiculos: fireIncidents.filter(i => matchesKeywords(i, ['vehículo', 'vehiculo', 'auto', 'camión', 'camion', 'moto', 'colectivo', 'furgón', 'utilitario'])).length,
-        forestales: fireIncidents.filter(i => matchesKeywords(i, ['bosque', 'árboles', 'arboles', 'rama', 'arbolado', 'reserva', 'cerro', 'montaña', 'sierra'])).length,
-        rurales: fireIncidents.filter(i => matchesKeywords(i, ['finca', 'parral', 'cultivo', 'rural', 'chacra', 'callejón', 'bodega', 'viñedo'])).length,
-        otros: 0
-    };
-    // Others is the remainder
-    fireCounts.otros = Math.max(0, fireIncidents.length - Object.values(fireCounts).reduce((a, b) => a + b, 0) + fireCounts.otros);
+    const topFireType = useMemo(() => {
+        if (fireIncidents.length === 0) return '—';
+        const labels = { pastizales:'Pastizales', viviendas:'Viviendas', vehiculos:'Vehículos', comercios:'Comercios', industrias:'Industrias', forestales:'Forestales', rurales:'Rurales', otros:'Otros' };
+        const top = Object.entries(fireCounts).sort((a,b) => b[1]-a[1])[0];
+        return labels[top[0]] || '—';
+    }, [fireCounts, fireIncidents.length]);
 
-    // ==========================================
-    // METRICS CALCULATORS FOR WIND (Scraping)
-    // ==========================================
-    const windIncidents = getFilteredIncidents('wind');
-    const windCounts = {
-        arboles: windIncidents.filter(i => matchesKeywords(i, ['árbol', 'arbol', 'forestal', 'árboles', 'arboles']) && matchesKeywords(i, ['caída', 'caida', 'cayó', 'cayo', 'derribado', 'tumbado', 'calzada'])).length,
-        ramas: windIncidents.filter(i => matchesKeywords(i, ['rama', 'ramas', 'gajo', 'gajos', 'copa']) && !matchesKeywords(i, ['árbol caído', 'arbol caido', 'árboles caídos', 'arboles caidos'])).length,
-        techos: windIncidents.filter(i => matchesKeywords(i, ['techo', 'techos', 'chapa', 'chapas', 'voladura', 'volaron', 'voló', 'volo'])).length,
-        cableados: windIncidents.filter(i => matchesKeywords(i, ['cable', 'cables', 'tendido', 'cableado', 'poste', 'postes', 'columnas', 'columna'])).length,
-        cortes: windIncidents.filter(i => matchesKeywords(i, ['corte', 'cortes', 'luz', 'energía', 'energia', 'apagón', 'apagon', 'sin servicio', 'electricidad', 'sin luz'])).length,
-        carteleria: windIncidents.filter(i => matchesKeywords(i, ['cartel', 'carteles', 'semáforo', 'semaforo', 'letrero', 'publicidad', 'semáforos', 'semaforos'])).length,
-        decesos: windIncidents.filter(i => matchesKeywords(i, ['muerto', 'muerta', 'fallecido', 'fallecida', 'deceso', 'víctima fatal', 'victima fatal', 'óbito', 'obito', 'fallece', 'murieron', 'murió', 'murio', 'decesos', 'cuerpo sin vida'])).length,
-        otros: 0
-    };
-    // Others is the remainder
-    windCounts.otros = Math.max(0, windIncidents.length - Object.values(windCounts).reduce((a, b) => a + b, 0) + windCounts.otros);
+    // ── Wind metrics ──────────────────────────────────────────────────────────
 
-    // ==========================================
-    // DYNAMIC DAILY INCIDENT STATISTICS (Chart)
-    // ==========================================
-    const getDailyStatistics = () => {
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth();
+    const windCounts = useMemo(() => {
+        const c = {
+            arboles:    windIncidents.filter(i => matchesWords(i, ['árbol caído','árbol cayó','arboles caidos','caída de árbol','caida de arbol'])).length,
+            ramas:      windIncidents.filter(i => matchesWords(i, ['rama','ramas','gajo']) && !matchesWords(i, ['árbol caído','arbol caido'])).length,
+            techos:     windIncidents.filter(i => matchesWords(i, ['techo','chapa','voladura','voló el techo','volaron techos'])).length,
+            cables:     windIncidents.filter(i => matchesWords(i, ['cable','cables','tendido eléctrico','poste','postes'])).length,
+            cortes:     windIncidents.filter(i => matchesWords(i, ['corte de luz','sin luz','apagón','apagon','sin servicio eléctrico'])).length,
+            carteleria: windIncidents.filter(i => matchesWords(i, ['cartel','semáforo','semaforo','letrero'])).length,
+        };
+        c.otros = Math.max(0, windIncidents.length - Object.values(c).reduce((a,b) => a+b, 0));
+        return c;
+    }, [windIncidents]);
+
+    const topWindDamage = useMemo(() => {
+        if (windIncidents.length === 0) return '—';
+        const labels = { arboles:'Árboles caídos', ramas:'Ramas', techos:'Techos', cables:'Cables/Postes', cortes:'Cortes de luz', carteleria:'Cartelería', otros:'Otros' };
+        const top = Object.entries(windCounts).sort((a,b) => b[1]-a[1])[0];
+        return labels[top[0]] || '—';
+    }, [windCounts, windIncidents.length]);
+
+    // ── Department chart ──────────────────────────────────────────────────────
+
+    const departmentChartData = useMemo(() => {
+        const counts = {};
+        SAN_JUAN_DEPARTMENTS.forEach(d => { counts[d] = 0; });
+        currentFilterIncidents.forEach(i => {
+            const name = i.department?.name;
+            if (!name) return;
+            const n = normalize(name);
+            const match = SAN_JUAN_DEPARTMENTS.find(d => normalize(d) === n);
+            if (match) counts[match]++;
+        });
+        const sorted = SAN_JUAN_DEPARTMENTS
+            .map(d => ({ label: d, count: counts[d] }))
+            .sort((a, b) => b.count - a.count);
+        const max = Math.max(...sorted.map(d => d.count), 1);
+        return sorted.map(d => ({ ...d, pct: Math.round((d.count / max) * 100) + '%' }));
+    }, [currentFilterIncidents]);
+
+    // ── Daily chart ───────────────────────────────────────────────────────────
+
+    const dailyChartData = useMemo(() => {
         const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-        
-        const days = [];
-        for (let d = 1; d <= daysInMonth; d++) {
-            const dayStr = String(d).padStart(2, '0');
-            const monthStr = String(currentMonth + 1).padStart(2, '0');
-            const key = `${currentYear}-${monthStr}-${dayStr}`;
-            days.push({
-                key: key,
-                label: `${d}`,
-                count: 0
-            });
-        }
-
+        const days = Array.from({ length: daysInMonth }, (_, i) => {
+            const d = i + 1;
+            const key = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            return { label: String(d), key, count: 0 };
+        });
         currentFilterIncidents.forEach(i => {
             if (!i.event_date) return;
-            const dateStr = i.event_date.slice(0, 10);
-            const foundDay = days.find(d => d.key === dateStr);
-            if (foundDay) {
-                foundDay.count += 1;
-            }
+            const key = i.event_date.slice(0, 10);
+            const found = days.find(d => d.key === key);
+            if (found) found.count++;
         });
+        const max = Math.max(...days.map(d => d.count), 1);
+        return days.map(d => ({ ...d, pct: Math.round((d.count / max) * 100) + '%', isToday: d.key === todayStr }));
+    }, [currentFilterIncidents, currentYear, currentMonth, todayStr]);
 
-        const maxVal = Math.max(...days.map(d => d.count));
-        return days.map(d => ({
-            label: d.label,
-            count: d.count,
-            pct: maxVal > 0 ? Math.round((d.count / maxVal) * 100) + "%" : "0%"
-        }));
+    // ── Accent color per section ──────────────────────────────────────────────
+
+    const ACCENTS = { general: '#002D62', traffic: '#2563EB', fire: '#DC2626', wind: '#F28C28' };
+    const accent = ACCENTS[activeSection];
+
+    const SECTION_META = {
+        general: { label: 'General (Todos)', icon: Database },
+        traffic: { label: 'Tránsito y Choques', icon: Car },
+        fire:    { label: 'Incendios', icon: Flame },
+        wind:    { label: 'Viento y Clima', icon: Wind },
     };
-    const dailyChartData = getDailyStatistics();
 
-    const getMonthYearTitle = () => {
-        const monthNames = [
-            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-        ];
-        const today = new Date();
-        return `${monthNames[today.getMonth()]} ${today.getFullYear()}`;
-    };
-    const currentMonthYear = getMonthYearTitle();
-
-    // ==========================================
-    // DYNAMIC DEPARTMENT INCIDENT COUNTS (Chart)
-    // ==========================================
-    const getDepartmentStatistics = () => {
-        const SAN_JUAN_DEPARTMENTS = [
-            "Capital", "Chimbas", "Rawson", "Rivadavia", "Santa Lucía",
-            "Pocito", "Sarmiento", "Albardón", "Angaco", "Caucete",
-            "San Martín", "9 de Julio", "25 de Mayo", "Ullum", "Zonda",
-            "Jáchal", "Iglesia", "Calingasta", "Valle Fértil"
-        ];
-
-        // Initialize all departments with 0 counts
-        const counts = {};
-        SAN_JUAN_DEPARTMENTS.forEach(dept => {
-            counts[dept] = 0;
-        });
-
-        // Accumulate incident counts using normalized department names to prevent accent discrepancies
-        currentFilterIncidents.forEach(i => {
-            const deptName = i.department?.name;
-            if (deptName) {
-                const normalizedSearch = deptName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                const matchedDept = SAN_JUAN_DEPARTMENTS.find(d => 
-                    d.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === normalizedSearch
-                );
-                if (matchedDept) {
-                    counts[matchedDept] += 1;
-                }
-            }
-        });
-
-        // Sort departments alphabetically
-        const sortedDepartments = [...SAN_JUAN_DEPARTMENTS].sort((a, b) => a.localeCompare(b));
-
-        const list = sortedDepartments.map(dept => ({
-            label: dept,
-            count: counts[dept]
-        }));
-
-        // Map counts to relative percentages (highest count is 100%)
-        const maxVal = Math.max(...list.map(s => s.count));
-        return list.map(s => ({
-            label: s.label,
-            count: s.count,
-            pct: maxVal > 0 ? Math.round((s.count / maxVal) * 100) + "%" : "0%"
-        }));
-    };
-    const departmentChartData = getDepartmentStatistics();
+    // ── Render ────────────────────────────────────────────────────────────────
 
     return (
         <div className="bg-[#0B1528] min-h-screen text-white font-sans antialiased pb-16">
-            {/* Header Superior */}
+
+            {/* ── Header ── */}
             <header className="border-b border-white/5 bg-[#0F1C34]/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4">
                 <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                        <div className="bg-gradient-to-br from-[#002D62] to-[#001D40] p-2.5 rounded-xl border border-white/10 shadow-lg">
+                        <div className="bg-gradient-to-br from-[#002D62] to-[#001D40] px-3 py-2 rounded-xl border border-white/10 shadow-lg">
                             <span className="text-[#F28C28] font-black text-xl tracking-tight">Zon</span>
                             <span className="text-white font-black text-xl tracking-tight">Data</span>
                         </div>
-                        <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
+                        <div className="h-6 w-px bg-white/10 hidden sm:block" />
                         <span className="bg-[#2563EB]/20 text-blue-400 text-[10px] font-bold uppercase tracking-widest py-1 px-2.5 rounded-md">
                             Dashboard Público
                         </span>
                     </div>
-
                     <div className="flex items-center gap-3">
-                        <button 
+                        {lastUpdated && (
+                            <span className="text-[10px] text-gray-500 hidden sm:flex items-center gap-1.5">
+                                <RefreshCw size={10} />
+                                {lastUpdated.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        )}
+                        <button
                             onClick={() => window.location.href = '/'}
                             className="bg-white/5 hover:bg-white/10 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all border border-white/10 flex items-center gap-2 cursor-pointer active:scale-95"
                         >
-                            <ArrowLeft size={14} />
-                            Volver al Mapa Interactivo
+                            <ArrowLeft size={14} /> Volver al Mapa
                         </button>
-                        <button 
+                        <button
                             onClick={() => window.location.href = '/dashboard_premium'}
                             className="bg-[#F28C28] hover:brightness-110 text-white font-black py-2 px-4 rounded-xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-[#F28C28]/25 active:scale-95"
                         >
-                            Ver Premium (Histórico)
+                            Ver Premium
                         </button>
                     </div>
                 </div>
             </header>
 
-            {/* Contenido Principal */}
-            <main className="max-w-7xl mx-auto px-6 mt-8">
-                {/* Banner de Presentación */}
-                <div className="bg-gradient-to-br from-[#111A2E] to-[#15223F] p-6 rounded-2xl border border-white/5 text-left mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-8 space-y-6">
+
+                {/* ── Hero Banner ── */}
+                <div className="bg-gradient-to-br from-[#111A2E] to-[#15223F] p-5 sm:p-6 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-2xl font-black">Estadísticas e Indicadores (Últimos 30 días)</h2>
-                        <p className="text-sm text-gray-400 mt-1">Análisis cuantitativo de siniestros, incendios y eventos climáticos reportados en la provincia de San Juan.</p>
+                        <h1 className="text-xl sm:text-2xl font-black">
+                            Estadísticas de Incidentes — San Juan
+                        </h1>
+                        <p className="text-sm text-gray-400 mt-1">
+                            Datos en tiempo real recopilados por scraping de {' '}
+                            <span className="text-white font-bold">12 medios locales</span>.
+                        </p>
                     </div>
-                    <div className="flex items-center gap-2 bg-[#F28C28]/10 text-[#F28C28] text-xs font-bold py-2.5 px-4 rounded-xl border border-[#F28C28]/20 shrink-0">
-                        <Activity size={14} className="animate-pulse" />
-                        Actualizado en Tiempo Real
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Period toggle */}
+                        <div className="flex items-center bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+                            {[7, 30].map(d => (
+                                <button
+                                    key={d}
+                                    onClick={() => setPeriodDays(d)}
+                                    className={`px-3 py-2 text-xs font-black transition-all cursor-pointer ${periodDays === d ? 'bg-[#002D62] text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    {d === 7 ? '7 días' : '30 días'}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold py-2 px-3 rounded-xl border border-emerald-500/20">
+                            <Activity size={12} className="animate-pulse" /> En vivo
+                        </div>
                     </div>
                 </div>
 
-                {/* Selector de Categorías */}
-                <div className="flex flex-wrap gap-2 bg-[#111A2E] p-2 rounded-2xl border border-white/5 mb-8">
-                    <button
-                        onClick={() => setActiveSection('general')}
-                        className={`py-2.5 px-5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeSection === 'general' ? 'bg-[#002D62] text-white border border-white/10 shadow-lg shadow-[#002D62]/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                    >
-                        <Database size={13} />
-                        General (Todos)
-                    </button>
-                    <button
-                        onClick={() => setActiveSection('traffic')}
-                        className={`py-2.5 px-5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeSection === 'traffic' ? 'bg-[#2563EB] text-white shadow-lg shadow-[#2563EB]/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                    >
-                        <Car size={13} />
-                        Tránsito y Choques
-                    </button>
-                    <button
-                        onClick={() => setActiveSection('fire')}
-                        className={`py-2.5 px-5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeSection === 'fire' ? 'bg-[#DC2626] text-white shadow-lg shadow-[#DC2626]/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                    >
-                        <Flame size={13} />
-                        Incendios
-                    </button>
-                    <button
-                        onClick={() => setActiveSection('wind')}
-                        className={`py-2.5 px-5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeSection === 'wind' ? 'bg-[#F28C28] text-white shadow-lg shadow-[#F28C28]/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                    >
-                        <Wind size={13} />
-                        Viento y Clima
-                    </button>
-                </div>
-
-                {/* ========================================== */}
-                {/* 1. SECCIÓN: TRÁNSITO Y CHOQUES (DETALLE COMPLETO) */}
-                {/* ========================================== */}
-                {activeSection === 'traffic' && (
-                    <div className="space-y-6 mb-8 text-left animate-fadeIn">
-                        
-                        {/* Contadores Clave de Tránsito */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#2563EB]/20">
-                                <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Total Accidentes</span>
-                                <h4 className="text-3xl font-black mt-1.5 text-[#2563EB]">{trafficIncidents.length}</h4>
-                                <span className="text-[10px] text-emerald-500 font-bold block mt-1.5">Últimos 30 días</span>
-                            </div>
-
-                            <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#2563EB]/20">
-                                <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Índice Fatalidad</span>
-                                <h4 className="text-3xl font-black mt-1.5 text-white">{fatalityIndex}%</h4>
-                                <span className="text-[10px] text-red-400 font-bold block mt-1.5">
-                                    {fatalTrafficCount > 0 ? `${fatalTrafficCount} accidente fatal` : 'Sin fallecidos'}
-                                </span>
-                            </div>
-
-                            <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#2563EB]/20">
-                                <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Horario Crítico</span>
-                                <h4 className="text-base font-black mt-3 text-white truncate">{criticalHour}</h4>
-                                <span className="text-[10px] text-gray-400 block mt-1.5">Retorno laboral / picos</span>
-                            </div>
-
-                            <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#2563EB]/20">
-                                <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Causa Animales</span>
-                                <h4 className="text-3xl font-black mt-1.5 text-[#EAB308]">{animalCrashes}</h4>
-                                <span className="text-[10px] text-gray-400 block mt-1.5">Choques reportados</span>
-                            </div>
-                        </div>
-
-                        {/* Conteo de Accidentes por Tipo de Vía */}
-                        <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5">
-                            <h3 className="text-lg font-black mb-4">Accidentes por Tipo de Vía</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Route size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h4 className="text-xs font-bold text-gray-400">Rutas Nac. / Prov.</h4>
-                                        <p className="text-2xl font-black text-white mt-0.5">{routeAccidents}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <RotateCw size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h4 className="text-xs font-bold text-gray-400">Av. Circunvalación</h4>
-                                        <p className="text-2xl font-black text-white mt-0.5">{circunvalacionAccidents}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Building2 size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h4 className="text-xs font-bold text-gray-400">Zonas Urbanas</h4>
-                                        <p className="text-2xl font-black text-white mt-0.5">{urbanAccidents}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Trees size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h4 className="text-xs font-bold text-gray-400">Zonas Alejadas</h4>
-                                        <p className="text-2xl font-black text-white mt-0.5">{ruralAccidents}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Tarjetas de Conteo por Tipo de Vehículo */}
-                        <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5">
-                            <div className="mb-4 text-left">
-                                <h3 className="text-lg font-black">Participación por Tipo de Vehículo y Actor</h3>
-                                <p className="text-xs text-gray-400 mt-0.5">Cantidad de actores involucrados detectados por procesamiento de texto.</p>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Car size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Autos</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.autos}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <CarFront size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Camionetas</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.camionetas}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Gauge size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Motos</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.motos}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Truck size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Camiones</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.camiones}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Bus size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Colectivos</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.colectivos}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <User size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Peatones</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.peatones}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Bike size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Bicicletas</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.bicicletas}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                    <div className="bg-[#2563EB]/10 text-[#2563EB] p-2.5 rounded-xl border border-[#2563EB]/20 shrink-0">
-                                        <Briefcase size={24} />
-                                    </div>
-                                    <div className="text-left">
-                                        <h5 className="text-xs text-gray-400 font-bold">Utilitarios</h5>
-                                        <p className="text-2xl font-black text-white mt-0.5">{vehicleCounts.utilitarios}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Desglose de Géneros */}
-                        <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row items-center gap-6">
-                            <div className="md:w-1/3 space-y-2">
-                                <h3 className="text-lg font-black">Participación por Género</h3>
-                                <p className="text-xs text-gray-400">Porcentaje estimado según menciones periodísticas del conductor o involucrados.</p>
-                            </div>
-                            <div className="flex-1 w-full space-y-4">
-                                <div className="flex justify-between text-xs font-bold text-gray-300">
-                                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#2563EB]"></span>Masculino: {malePercent}%</span>
-                                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-pink-500"></span>Femenino: {femalePercent}%</span>
-                                </div>
-                                <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden flex">
-                                    <div className="bg-[#2563EB] h-full transition-all" style={{ width: malePercent + "%" }}></div>
-                                    <div className="bg-pink-500 h-full transition-all" style={{ width: femalePercent + "%" }}></div>
-                                </div>
-                            </div>
-                        </div>
-
+                {/* ── Global KPI Bar ── */}
+                {loading ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {[1,2,3,4].map(i => (
+                            <div key={i} className="bg-[#111A2E] p-5 rounded-2xl border border-white/5 animate-pulse h-28" />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <KpiCard
+                            label="Total Incidentes"
+                            value={allIncidents.length}
+                            subtext={periodDays === 7 ? 'Últimos 7 días' : `${MONTH_NAMES[currentMonth]} ${currentYear}`}
+                            color="white"
+                            icon={Database}
+                            border="border-white/8"
+                        />
+                        <KpiCard
+                            label="Fallecidos"
+                            value={totalFatales}
+                            subtext={totalFatales === 0 ? 'Sin fallecidos en el período' : `${totalFatales === 1 ? '1 víctima fatal' : `${totalFatales} víctimas fatales`}`}
+                            color={totalFatales > 0 ? '#EF4444' : '#6B7280'}
+                            icon={Skull}
+                            border={totalFatales > 0 ? 'border-red-500/20' : 'border-white/5'}
+                        />
+                        <KpiCard
+                            label="Heridos (estimado)"
+                            value={totalHeridos}
+                            subtext="Detectados por menciones en noticias"
+                            color="#F28C28"
+                            icon={Heart}
+                            border="border-orange-500/15"
+                        />
+                        <KpiCard
+                            label="Incidentes Hoy"
+                            value={todayCount}
+                            subtext={`${today.toLocaleDateString('es-AR', { day:'numeric', month:'short' })}`}
+                            color={todayCount > 0 ? '#34D399' : '#6B7280'}
+                            icon={Clock}
+                            pulse={todayCount > 0}
+                            border={todayCount > 0 ? 'border-emerald-500/20' : 'border-white/5'}
+                        />
                     </div>
                 )}
 
-                {/* ========================================== */}
-                {/* 2. SECCIÓN: GENERAL / INCENDIOS / VIENTO (CONTADORES MOCK) */}
-                {/* ========================================== */}
-                {activeSection !== 'traffic' && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                {/* ── Category Tabs ── */}
+                <div className="flex flex-wrap gap-2 bg-[#111A2E] p-2 rounded-2xl border border-white/5">
+                    {Object.entries(SECTION_META).map(([key, { label, icon: Icon }]) => (
+                        <button
+                            key={key}
+                            onClick={() => setActiveSection(key)}
+                            className={`py-2.5 px-5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                                activeSection === key
+                                    ? 'text-white border border-white/10 shadow-lg'
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                            }`}
+                            style={activeSection === key ? { backgroundColor: ACCENTS[key], boxShadow: `0 4px 20px ${ACCENTS[key]}40` } : {}}
+                        >
+                            <Icon size={13} /> {label}
+                        </button>
+                    ))}
+                </div>
+
+                {loading && (
+                    <div className="flex items-center justify-center py-20 text-gray-500">
+                        <RefreshCw size={20} className="animate-spin mr-3" /> Cargando datos...
+                    </div>
+                )}
+
+                {!loading && (
+                    <>
+                        {/* ── GENERAL SECTION ── */}
                         {activeSection === 'general' && (
-                            <>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-white/10 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Total Reportes</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-white">{incidents.length}</h4>
-                                    <span className="text-[10px] text-emerald-500 flex items-center gap-1 mt-1.5 font-bold">
-                                        <TrendingUp size={12} /> Total Scrapeado
-                                    </span>
+                            <div className="space-y-6">
+                                {/* Category summary cards */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    {[
+                                        { key:'traffic', label:'Tránsito y Choques', count: trafficIncidents.length, icon: Car, color:'#2563EB', fatal: trafficIncidents.filter(i=>i.is_fatal).length },
+                                        { key:'fire',    label:'Incendios',           count: fireIncidents.length,    icon: Flame, color:'#DC2626', fatal: fireIncidents.filter(i=>i.is_fatal).length },
+                                        { key:'wind',    label:'Viento y Clima',      count: windIncidents.length,    icon: Wind,  color:'#F28C28', fatal: windIncidents.filter(i=>i.is_fatal).length },
+                                    ].map(cat => (
+                                        <button
+                                            key={cat.key}
+                                            onClick={() => setActiveSection(cat.key)}
+                                            className="bg-[#111A2E] p-5 rounded-2xl border border-white/5 text-left hover:border-white/10 transition-all cursor-pointer group"
+                                        >
+                                            <div className="flex items-start justify-between mb-3">
+                                                <div className="p-2 rounded-lg" style={{ background: cat.color + '20', color: cat.color }}>
+                                                    <cat.icon size={18} />
+                                                </div>
+                                                <span className="text-[10px] text-gray-500 font-bold group-hover:text-gray-300 transition-colors">Ver detalle →</span>
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 uppercase font-black tracking-wider">{cat.label}</p>
+                                            <h4 className="text-3xl font-black mt-1" style={{ color: cat.color }}>{cat.count}</h4>
+                                            {cat.fatal > 0 && (
+                                                <span className="text-[10px] text-red-400 font-bold flex items-center gap-1 mt-1">
+                                                    <Skull size={9} /> {cat.fatal} {cat.fatal === 1 ? 'fatal' : 'fatales'}
+                                                </span>
+                                            )}
+                                            {cat.fatal === 0 && (
+                                                <span className="text-[10px] text-gray-600 font-bold mt-1 block">Sin fallecidos</span>
+                                            )}
+                                        </button>
+                                    ))}
                                 </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#2563EB]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Tránsito y Choques</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-[#2563EB]">{trafficIncidents.length}</h4>
-                                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1.5">
-                                        <Car size={12} className="text-[#2563EB]" /> Reportes Detectados
-                                    </span>
-                                </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#DC2626]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Incendios</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-[#DC2626]">{getFilteredIncidents('fire').length}</h4>
-                                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1.5">
-                                        <Flame size={12} className="text-[#DC2626]" /> Reportes Detectados
-                                    </span>
-                                </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#F28C28]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Viento y Clima</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-[#F28C28]">{getFilteredIncidents('wind').length}</h4>
-                                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1.5">
-                                        <Wind size={12} className="text-[#F28C28]" /> Reportes Detectados
-                                    </span>
-                                </div>
-                            </>
+                            </div>
                         )}
 
+                        {/* ── TRAFFIC SECTION ── */}
+                        {activeSection === 'traffic' && (
+                            <div className="space-y-5">
+                                {/* KPIs */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <KpiCard label="Total Accidentes" value={trafficIncidents.length} subtext={periodDays === 7 ? 'Últimos 7 días' : 'Últimos 30 días'} color="#2563EB" icon={Car} border="border-blue-500/20" />
+                                    <KpiCard label="Con Fallecidos"   value={fatalTrafficCount} subtext={fatalTrafficCount === 0 ? 'Sin accidentes fatales' : `Índice: ${fatalityIndex}% de siniestros`} color={fatalTrafficCount > 0 ? '#EF4444' : '#6B7280'} icon={Skull} border={fatalTrafficCount > 0 ? 'border-red-500/20' : 'border-white/5'} />
+                                    <div className="bg-[#111A2E] p-5 rounded-2xl border border-blue-500/20 text-left">
+                                        <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider flex items-center gap-1"><Clock size={10}/> Hora Crítica</span>
+                                        <h4 className="text-sm font-black mt-3 text-white leading-tight">{criticalHour}</h4>
+                                        <span className="text-[10px] text-gray-500 mt-1 block">Franja con más siniestros</span>
+                                    </div>
+                                    <KpiCard label="Choques en Ruta"  value={roadCounts.rutas} subtext="Rutas nacionales y provinciales" color="#EAB308" icon={Route} border="border-yellow-500/15" />
+                                </div>
+
+                                {/* Road types */}
+                                <SectionCard title="Accidentes por Tipo de Vía" accent="#2563EB">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                                        {[
+                                            { icon: Route,        label: 'Rutas Nac./Prov.',    count: roadCounts.rutas },
+                                            { icon: RotateCw,     label: 'Av. Circunvalación',  count: roadCounts.circunvalacion },
+                                            { icon: Building2,    label: 'Zonas Urbanas',        count: roadCounts.urbana },
+                                            { icon: Trees,        label: 'Zonas Alejadas',       count: roadCounts.alejada },
+                                            { icon: MapPin,       label: 'Sin Clasificar',       count: roadCounts.otro },
+                                        ].map(r => <TypeCard key={r.label} {...r} accent="#2563EB" />)}
+                                    </div>
+                                </SectionCard>
+
+                                {/* Vehicle types */}
+                                <SectionCard title="Participación por Tipo de Vehículo / Actor" accent="#2563EB">
+                                    <p className="text-[11px] text-gray-500 -mt-3 mb-4">Detectados a partir de los campos extraídos por IA en cada noticia.</p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                        {[
+                                            { icon: Car,       label: 'Autos',       count: vehicleCounts.autos },
+                                            { icon: CarFront,  label: 'Camionetas',  count: vehicleCounts.camionetas },
+                                            { icon: Gauge,     label: 'Motos',       count: vehicleCounts.motos },
+                                            { icon: Truck,     label: 'Camiones',    count: vehicleCounts.camiones },
+                                            { icon: Bus,       label: 'Colectivos',  count: vehicleCounts.colectivos },
+                                            { icon: Footprints,label: 'Peatones',    count: vehicleCounts.peatones },
+                                            { icon: Bike,      label: 'Bicicletas',  count: vehicleCounts.bicicletas },
+                                            { icon: Briefcase, label: 'Utilitarios', count: vehicleCounts.utilitarios },
+                                        ].map(v => <TypeCard key={v.label} {...v} accent="#2563EB" />)}
+                                    </div>
+                                </SectionCard>
+                            </div>
+                        )}
+
+                        {/* ── FIRE SECTION ── */}
                         {activeSection === 'fire' && (
-                            <>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#DC2626]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Total Incendios</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-[#DC2626]">{getFilteredIncidents('fire').length}</h4>
-                                    <span className="text-[10px] text-red-500 font-bold block mt-1.5">Últimos 30 días</span>
+                            <div className="space-y-5">
+                                {/* KPIs */}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    <KpiCard label="Total Incendios" value={fireIncidents.length} subtext={periodDays === 7 ? 'Últimos 7 días' : 'Últimos 30 días'} color="#DC2626" icon={Flame} border="border-red-500/20" />
+                                    <div className="bg-[#111A2E] p-5 rounded-2xl border border-red-500/20 text-left">
+                                        <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Tipo Más Frecuente</span>
+                                        <h4 className="text-xl font-black mt-3 text-white truncate">{topFireType}</h4>
+                                        <span className="text-[10px] text-red-400 font-bold block mt-1">Según tipo de fuente detectado</span>
+                                    </div>
+                                    <KpiCard label="Con Fallecidos" value={fireIncidents.filter(i=>i.is_fatal).length} subtext={fireIncidents.filter(i=>i.is_fatal).length === 0 ? 'Sin fallecidos en el período' : 'Víctimas fatales confirmadas'} color={fireIncidents.filter(i=>i.is_fatal).length > 0 ? '#EF4444' : '#6B7280'} icon={Skull} border={fireIncidents.filter(i=>i.is_fatal).length > 0 ? 'border-red-500/20' : 'border-white/5'} />
                                 </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#DC2626]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Foco Común</span>
-                                    <h4 className="text-xl font-black mt-3 text-white truncate">Pastizales</h4>
-                                    <span className="text-[10px] text-red-400 font-bold block mt-1.5">75% de los focos</span>
-                                </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#DC2626]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Área Afectada</span>
-                                    <h4 className="text-xl font-black mt-3 text-white truncate">14.5 Ha</h4>
-                                    <span className="text-[10px] text-gray-400 block mt-1.5">Zonas rurales</span>
-                                </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#DC2626]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Resp. Bomberos</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-white">12 min</h4>
-                                    <span className="text-[10px] text-emerald-500 font-bold block mt-1.5">Despliegue rápido</span>
-                                </div>
-                            </>
+
+                                {/* Fire types */}
+                                <SectionCard title="Clasificación por Tipo de Incendio" accent="#DC2626">
+                                    <p className="text-[11px] text-gray-500 -mt-3 mb-4">Clasificación automática por análisis de palabras clave en el texto de cada noticia.</p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                        {[
+                                            { icon: Trees,   label: 'Pastizales / Malezas', count: fireCounts.pastizales },
+                                            { icon: Home,    label: 'Casas / Viviendas',    count: fireCounts.viviendas },
+                                            { icon: Car,     label: 'Vehículos',             count: fireCounts.vehiculos },
+                                            { icon: Store,   label: 'Comercios',             count: fireCounts.comercios },
+                                            { icon: Factory, label: 'Industrias / Galpones', count: fireCounts.industrias },
+                                            { icon: Leaf,    label: 'Forestales / Cerros',   count: fireCounts.forestales },
+                                            { icon: Wheat,   label: 'Rurales / Fincas',      count: fireCounts.rurales },
+                                            { icon: Layers,  label: 'Otros Focos',           count: fireCounts.otros },
+                                        ].map(f => <TypeCard key={f.label} {...f} accent="#DC2626" />)}
+                                    </div>
+                                </SectionCard>
+                            </div>
                         )}
 
+                        {/* ── WIND SECTION ── */}
                         {activeSection === 'wind' && (
-                            <>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#F28C28]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Total Alertas</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-[#F28C28]">{getFilteredIncidents('wind').length}</h4>
-                                    <span className="text-[10px] text-amber-500 font-bold block mt-1.5">Zonda / Sur</span>
+                            <div className="space-y-5">
+                                {/* KPIs */}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    <KpiCard label="Total Eventos Climáticos" value={windIncidents.length} subtext={periodDays === 7 ? 'Últimos 7 días' : 'Últimos 30 días'} color="#F28C28" icon={Wind} border="border-orange-500/20" />
+                                    <div className="bg-[#111A2E] p-5 rounded-2xl border border-orange-500/20 text-left">
+                                        <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Daño Más Frecuente</span>
+                                        <h4 className="text-xl font-black mt-3 text-white truncate">{topWindDamage}</h4>
+                                        <span className="text-[10px] text-amber-400 font-bold block mt-1">Detectado por análisis de texto</span>
+                                    </div>
+                                    <KpiCard label="Con Fallecidos" value={windIncidents.filter(i=>i.is_fatal).length} subtext={windIncidents.filter(i=>i.is_fatal).length === 0 ? 'Sin fallecidos en el período' : 'Víctimas confirmadas'} color={windIncidents.filter(i=>i.is_fatal).length > 0 ? '#EF4444' : '#6B7280'} icon={Skull} border={windIncidents.filter(i=>i.is_fatal).length > 0 ? 'border-red-500/20' : 'border-white/5'} />
                                 </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#F28C28]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Ráfaga Máxima</span>
-                                    <h4 className="text-xl font-black mt-3 text-white truncate">92 km/h</h4>
-                                    <span className="text-[10px] text-[#F28C28] font-bold block mt-1.5">Viento Zonda</span>
-                                </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#F28C28]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Cortes de Luz</span>
-                                    <h4 className="text-xl font-black mt-3 text-white truncate">3 zonas</h4>
-                                    <span className="text-[10px] text-gray-400 block mt-1.5">Rivadavia / S. Lucía</span>
-                                </div>
-                                <div className="bg-[#111A2E] p-5 rounded-2xl border border-[#F28C28]/20 text-left">
-                                    <span className="text-xs text-gray-400 uppercase font-bold">Clases Susp.</span>
-                                    <h4 className="text-3xl font-black mt-1.5 text-white">1 vez</h4>
-                                    <span className="text-[10px] text-red-400 font-bold block mt-1.5">Recomendación Civil</span>
-                                </div>
-                            </>
+
+                                {/* Wind damage types */}
+                                <SectionCard title="Clasificación por Tipo de Daño" accent="#F28C28">
+                                    <p className="text-[11px] text-gray-500 -mt-3 mb-4">Clasificación automática por análisis de palabras clave en el texto de cada noticia.</p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                        {[
+                                            { icon: Trees,   label: 'Árboles Caídos',     count: windCounts.arboles },
+                                            { icon: Leaf,    label: 'Ramas Desprendidas', count: windCounts.ramas },
+                                            { icon: Home,    label: 'Techos Afectados',   count: windCounts.techos },
+                                            { icon: Zap,     label: 'Cables / Postes',    count: windCounts.cables },
+                                            { icon: ZapOff,  label: 'Cortes de Luz',      count: windCounts.cortes },
+                                            { icon: Flag,    label: 'Cartelería/Semáforos',count: windCounts.carteleria },
+                                            { icon: Layers,  label: 'Otros Daños',         count: windCounts.otros },
+                                        ].map(w => <TypeCard key={w.label} {...w} accent="#F28C28" />)}
+                                    </div>
+                                </SectionCard>
+                            </div>
                         )}
-                    </div>
+
+                        {/* ── Charts (always visible) ── */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+                            {/* Department horizontal bar chart */}
+                            <SectionCard title="Incidentes por Departamento">
+                                <div className="flex items-center justify-between -mt-3 mb-4">
+                                    <span className="text-[10px] text-gray-500 bg-white/5 px-2 py-0.5 rounded-md">
+                                        {currentFilterIncidents.length} eventos • {activeSection === 'general' ? 'Todos' : SECTION_META[activeSection].label}
+                                    </span>
+                                </div>
+                                <div className="space-y-2">
+                                    {departmentChartData.map(d => (
+                                        <BarRow key={d.label} {...d} accent={accent} />
+                                    ))}
+                                </div>
+                            </SectionCard>
+
+                            {/* Daily bar chart */}
+                            <SectionCard title={`Incidentes por Día — ${MONTH_NAMES[currentMonth]} ${currentYear}`}>
+                                <div className="flex items-center justify-between -mt-3 mb-4">
+                                    <span className="text-[10px] text-gray-500 bg-white/5 px-2 py-0.5 rounded-md">
+                                        Tendencia de siniestralidad
+                                    </span>
+                                </div>
+                                <div className="h-48 flex items-end gap-[2px] sm:gap-[4px] border-b border-gray-700/40 pb-1 overflow-x-auto">
+                                    {dailyChartData.map(d => (
+                                        <DayBar key={d.key} {...d} accent={accent} />
+                                    ))}
+                                </div>
+                                <div className="flex justify-between text-[9px] text-gray-600 mt-3">
+                                    <span>1</span>
+                                    <span className="text-[#F28C28]">▲ hoy</span>
+                                    <span>{dailyChartData.length}</span>
+                                </div>
+                            </SectionCard>
+                        </div>
+
+                        {/* ── Data source disclaimer ── */}
+                        <div className="bg-[#111A2E]/60 border border-white/5 rounded-2xl p-4 flex items-start gap-3">
+                            <Info size={14} className="text-gray-500 mt-0.5 shrink-0" />
+                            <p className="text-[11px] text-gray-500 leading-relaxed">
+                                Los datos son recopilados automáticamente mediante scraping de 12 medios de comunicación locales de San Juan. La clasificación por tipo de vehículo, daño y heridos se realiza con inteligencia artificial (Gemini) y análisis de texto. Los valores pueden no reflejar la totalidad de incidentes de la provincia.
+                                {' '}<span className="text-gray-400 font-bold">Los datos de fallecidos son los únicos 100% verificados por fuente primaria.</span>
+                            </p>
+                        </div>
+
+                        {/* ── CTA Banner ── */}
+                        <div className="bg-gradient-to-r from-[#111A2E] to-[#1a2540] p-7 rounded-2xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-black">¿Querés el dataset completo de San Juan?</h3>
+                                <p className="text-xs text-gray-400 max-w-xl">
+                                    El acceso premium desbloquea datos históricos ilimitados, exportación en Excel/CSV/JSON y filtros avanzados por departamento, fecha y tipo de incidente.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => window.location.href = '/dashboard_premium'}
+                                className="bg-[#F28C28] text-white hover:brightness-110 font-black text-xs uppercase tracking-wider py-3 px-6 rounded-xl shadow-lg shadow-[#F28C28]/25 transition-all shrink-0 cursor-pointer active:scale-95 whitespace-nowrap"
+                            >
+                                Adquirir Acceso Premium
+                            </button>
+                        </div>
+                    </>
                 )}
-
-                {/* ========================================== */}
-                {/* 2.2 SECCIÓN: TARJETAS DE CONTEO POR TIPO DE INCENDIO */}
-                {/* ========================================== */}
-                {activeSection === 'fire' && (
-                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 mb-8">
-                        <div className="mb-4 text-left">
-                            <h3 className="text-lg font-black text-[#DC2626]">Participación por Tipo de Incendio</h3>
-                            <p className="text-xs text-gray-400 mt-0.5">Cantidad de focos detectados automáticamente mediante procesamiento inteligente de texto.</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Trees size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Pastizales / Malezas</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.pastizales}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Home size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Casas / Viviendas</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.viviendas}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Store size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Comercios / Locales</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.comercios}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Factory size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Industrias / Galpones</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.industrias}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Car size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Vehículos</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.vehiculos}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Flame size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Forestales / Cerros</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.forestales}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Wheat size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Rurales / Fincas</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.rurales}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Layers size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Otros Focos</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{fireCounts.otros}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ========================================== */}
-                {/* 2.3 SECCIÓN: TARJETAS DE CONTEO POR TIPO DE DAÑO POR VIENTO */}
-                {/* ========================================== */}
-                {activeSection === 'wind' && (
-                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 mb-8">
-                        <div className="mb-4 text-left">
-                            <h3 className="text-lg font-black text-[#F28C28]">Daños por Fenómenos Climáticos</h3>
-                            <p className="text-xs text-gray-400 mt-0.5">Clasificación dinámica de daños provocados por viento Zonda / temporal en San Juan.</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
-                                    <Trees size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Árboles Caídos</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.arboles}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
-                                    <Leaf size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Ramas Desprendidas</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.ramas}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
-                                    <Home size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Techos Afectados</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.techos}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
-                                    <Zap size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Postes / Cableados</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.cableados}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
-                                    <ZapOff size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Cortes de Luz</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.cortes}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
-                                    <Flag size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Cartelería / Semáforos</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.carteleria}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#DC2626]/10 text-[#DC2626] p-2.5 rounded-xl border border-[#DC2626]/20 shrink-0">
-                                    <Skull size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Decesos / Fallecidos</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.decesos}</p>
-                                </div>
-                            </div>
-                            <div className="bg-[#0B1528] p-4 rounded-xl border border-white/5 flex items-center gap-4">
-                                <div className="bg-[#F28C28]/10 text-[#F28C28] p-2.5 rounded-xl border border-[#F28C28]/20 shrink-0">
-                                    <Layers size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <h5 className="text-xs text-gray-400 font-bold">Otros Daños</h5>
-                                    <p className="text-2xl font-black text-white mt-0.5">{windCounts.otros}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ========================================== */}
-                {/* 3. GRÁFICOS Y DETALLES DE SECCIÓN */}
-                {/* ========================================== */}
-                <div className="mb-8">
-                    {/* Gráfico Analítico Real de Incidentes por Departamento */}
-                    <div className="bg-[#111A2E] p-6 rounded-2xl border border-white/5 text-left flex flex-col justify-between">
-                        <div>
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                                <h4 className="text-sm font-black uppercase tracking-wider">
-                                    Incidentes por Departamento (San Juan)
-                                </h4>
-                                <span className="text-[10px] text-gray-400 bg-white/5 py-1 px-2.5 rounded-md">
-                                    Datos Reales Filtrados
-                                </span>
-                            </div>
-                            <div className="h-72 flex items-end gap-1.5 sm:gap-2.5 pt-6 pb-14 border-b border-gray-700/50 overflow-x-auto scrollbar-thin">
-                                {departmentChartData.map((d, i) => {
-                                    let color = "bg-[#002D62]";
-                                    if (activeSection === 'traffic') color = "bg-[#2563EB]";
-                                    if (activeSection === 'fire') color = "bg-[#DC2626]";
-                                    if (activeSection === 'wind') color = "bg-[#F28C28]";
-
-                                    return (
-                                        <div key={i} className="flex-1 min-w-[32px] sm:min-w-[45px] flex flex-col items-center gap-2 group h-full justify-end relative">
-                                            <div className="text-[10px] font-bold text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5">
-                                                {d.count}
-                                            </div>
-                                            <div 
-                                                className={`w-full ${color} rounded-t-sm transition-all group-hover:brightness-110`} 
-                                                style={{ height: d.pct }}
-                                            ></div>
-                                            <span className="text-[9px] md:text-xs text-gray-400 font-bold whitespace-nowrap rotate-[-35deg] origin-top-left translate-y-1 block mt-1">
-                                                {d.label}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-gray-400 mt-4">
-                            <span>* Datos recopilados en tiempo real por ZonData</span>
-                            <span className="text-[#F28C28] font-bold">Public Analytics</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mb-8">
-                    {/* Gráfico Analítico Real de Incidentes por Día */}
-                    <div className="bg-[#111A2E] p-4 sm:p-6 rounded-2xl border border-white/5 text-left flex flex-col justify-between">
-                        <div>
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                                <h4 className="text-sm font-black uppercase tracking-wider">
-                                    Incidentes por Día ({currentMonthYear})
-                                </h4>
-                                <span className="text-[10px] text-gray-400 bg-white/5 py-1 px-2.5 rounded-md">
-                                    Tendencia de Siniestralidad
-                                </span>
-                            </div>
-                            <div className="h-72 flex items-end gap-[3px] sm:gap-[6px] pt-6 pb-10 border-b border-gray-700/50 overflow-x-auto scrollbar-thin">
-                                {dailyChartData.map((d, i) => {
-                                    let color = "bg-[#002D62]";
-                                    if (activeSection === 'traffic') color = "bg-[#2563EB]";
-                                    if (activeSection === 'fire') color = "bg-[#DC2626]";
-                                    if (activeSection === 'wind') color = "bg-[#F28C28]";
-
-                                    return (
-                                        <div key={i} className="flex-1 min-w-[7px] sm:min-w-[14px] flex flex-col items-center gap-2 h-full justify-end relative group">
-                                            <div className="text-[10px] font-bold text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5 z-10 bg-[#0B1528] px-1 rounded border border-white/10">
-                                                {d.count}
-                                            </div>
-                                            <div 
-                                                className={`w-full ${color} rounded-t-sm transition-all group-hover:brightness-110`} 
-                                                style={{ height: d.pct }}
-                                            ></div>
-                                            <span className="text-[7px] sm:text-[9px] md:text-xs text-gray-400 font-bold block mt-1">
-                                                {d.label}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-gray-400 mt-4">
-                            <span>* Historial diario acumulativo del mes actual</span>
-                            <span className="text-[#F28C28] font-bold">ZonData Evolution</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Banner CTA Conversión */}
-                <div className="bg-gradient-to-r from-[#111A2E] to-[#15223F] p-8 rounded-2xl border border-white/5 text-left flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="space-y-1">
-                        <h3 className="text-lg font-black">¿Quieres descargar toda la base de datos de San Juan?</h3>
-                        <p className="text-xs text-gray-400 max-w-xl">El acceso premium desbloquea el dataset completo en formatos Excel, CSV y JSON con filtros avanzados por departamento y localidad.</p>
-                    </div>
-                    <button 
-                        onClick={() => window.location.href = '/dashboard_premium'}
-                        className="bg-[#F28C28] text-white hover:brightness-110 font-black text-xs uppercase tracking-wider py-3 px-6 rounded-xl shadow-lg shadow-[#F28C28]/25 transition-all shrink-0 cursor-pointer active:scale-95"
-                    >
-                        Adquirir Acceso Premium
-                    </button>
-                </div>
             </main>
         </div>
     );

@@ -16,6 +16,28 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
+// Configuración de capas de mapas disponibles
+const MAP_LAYERS = {
+    street: {
+        name: 'Mapa',
+        icon: '🗺️',
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CartoDB</a>'
+    },
+    satellite: {
+        name: 'Satélite',
+        icon: '🛰️',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: 'Tiles &copy; Esri &mdash; Fuente: Esri, USDA, USGS y la comunidad de GIS'
+    },
+    dark: {
+        name: 'Oscuro',
+        icon: '🌙',
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attribution: '&copy; <a href="https://carto.com/">CartoDB</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }
+};
+
 // Custom Icon generator based on category type
 const createCustomIcon = (type, isApproximate = false, isFatal = false, title = "Incidente") => {
     let color = '#002D62'; 
@@ -121,6 +143,7 @@ const renderPrecisionBadge = (incident) => {
 
 const MapComponent = () => {
     const [incidents, setIncidents] = useState([]);
+    const [activeLayer, setActiveLayer] = useState('street');
     // Abrir por defecto en escritorio, cerrado en móvil
     const [sidebarOpen, setSidebarOpen] = useState(() => {
         // Guard against SSR environments
@@ -657,14 +680,32 @@ const MapComponent = () => {
 
             {/* Map Area */}
             <div className="flex-1 h-full relative z-0">
+                {/* Selector de capas flotante (Pill bar premium con glassmorphism) */}
+                <div className="absolute top-4 right-4 z-[1000] flex bg-[#070d19]/80 backdrop-blur-xl border border-white/10 p-1 rounded-xl shadow-2xl">
+                    {Object.entries(MAP_LAYERS).map(([key, layer]) => (
+                        <button
+                            key={key}
+                            onClick={() => setActiveLayer(key)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                                activeLayer === key
+                                    ? 'bg-gradient-to-r from-[#F28C28] to-[#d97a1d] text-white shadow-md shadow-[#F28C28]/25'
+                                    : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
+                            }`}
+                        >
+                            <span>{layer.icon}</span>
+                            <span>{layer.name}</span>
+                        </button>
+                    ))}
+                </div>
+
                 <MapContainer center={position} zoom={8} className="w-full h-full custom-map-cursor" zoomControl={false}>
                     <MapFocus incident={selectedIncident} />
                     {/* Position zoom control on the right to avoid sidebar overlap */}
                     <ZoomControl position="bottomright" />
                     
                     <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                        attribution={MAP_LAYERS[activeLayer].attribution}
+                        url={MAP_LAYERS[activeLayer].url}
                     />
                     
                     {/* Capas GeoJSON de San Juan */}
@@ -683,13 +724,44 @@ const MapComponent = () => {
                     {departmentsGeoJSON && (
                         <GeoJSON
                             data={departmentsGeoJSON}
-                            interactive={false}
+                            interactive={true}
                             style={{
-                                color: '#002D62',
+                                color: activeLayer === 'dark' ? '#38bdf8' : '#002D62',
                                 weight: 0.8,
-                                opacity: 0.3,
+                                opacity: activeLayer === 'dark' ? 0.2 : 0.3,
                                 fillOpacity: 0,
                                 dashArray: '6, 8'
+                            }}
+                            onEachFeature={(feature, layer) => {
+                                if (feature.properties && feature.properties.nombre) {
+                                    // Vincular tooltip al departamento
+                                    layer.bindTooltip(feature.properties.nombre, {
+                                        permanent: false,
+                                        direction: 'center',
+                                        className: 'dept-label-tooltip'
+                                    });
+                                    // Eventos de hover para resaltar el departamento
+                                    layer.on({
+                                        mouseover: (e) => {
+                                            const l = e.target;
+                                            l.setStyle({
+                                                fillColor: activeLayer === 'dark' ? '#38bdf8' : '#002D62',
+                                                fillOpacity: 0.04,
+                                                opacity: 0.6,
+                                                weight: 1.2
+                                            });
+                                        },
+                                        mouseout: (e) => {
+                                            const l = e.target;
+                                            l.setStyle({
+                                                fillColor: 'transparent',
+                                                fillOpacity: 0,
+                                                opacity: activeLayer === 'dark' ? 0.2 : 0.3,
+                                                weight: 0.8
+                                            });
+                                        }
+                                    });
+                                }
                             }}
                         />
                     )}

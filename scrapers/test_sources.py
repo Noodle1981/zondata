@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import re
 import urllib3
 import time
-from rss_scraper import HEADERS
+from rss_scraper import HEADERS, get_headers
 from load_rules import load_rules, get_source_rule
 
 RULES = load_rules()
@@ -18,7 +18,7 @@ def check_rss():
             continue
         for url in rule.get("scrape_urls", []):
             try:
-                res = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+                res = requests.get(url, headers=get_headers(url), timeout=10, verify=False)
                 if res.status_code == 200:
                     root = ET.fromstring(res.content)
                     items = root.findall('.//item')
@@ -33,7 +33,7 @@ def check_html():
     session = requests.Session()
     # Intentar calentar sesión para Diario Movil
     try:
-        session.get("https://diariomovil.info/", headers=HEADERS, timeout=10, verify=False)
+        session.get("https://diariomovil.info/", headers=get_headers("https://diariomovil.info/"), timeout=10, verify=False)
         time.sleep(1)
     except:
         pass
@@ -44,7 +44,7 @@ def check_html():
             continue
         for url in rule.get("scrape_urls", []):
             try:
-                res = session.get(url, headers=HEADERS, timeout=10, verify=False)
+                res = session.get(url, headers=get_headers(url), timeout=10, verify=False)
                 if res.status_code == 200:
                     matches = list(re.finditer(rule['article_selector'], res.text, re.DOTALL))
                     print(f"[OK] {domain} | Noticias encontradas: {len(matches)}")

@@ -120,4 +120,24 @@
     .react-datepicker__triangle {
         display: none !important;
     }
+
+    /* Tooltip personalizado premium para etiquetas de departamento en el mapa */
+    .dept-label-tooltip {
+        background-color: rgba(7, 13, 25, 0.85) !important;
+        backdrop-filter: blur(8px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 0.5rem !important;
+        color: rgba(255, 255, 255, 0.85) !important;
+        font-family: 'Instrument Sans', sans-serif !important;
+        font-size: 10px !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.05em !important;
+        text-transform: uppercase !important;
+        padding: 4px 8px !important;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    .dept-label-tooltip::before {
+        border-top-color: rgba(7, 13, 25, 0.85) !important;
+    }
 }
