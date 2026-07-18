@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ScraperSource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Artisan;
 
 /**
  * CRUD de fuentes del scraper para el panel /admin.
@@ -103,7 +104,7 @@ class ScraperSourceController extends Controller
     public function restoreDefaults(): JsonResponse
     {
         try {
-            \Artisan::call('db:seed', ['--class' => 'ScraperSourceSeeder', '--force' => true]);
+            Artisan::call('db:seed', ['--class' => 'ScraperSourceSeeder', '--force' => true]);
             $count = ScraperSource::count();
             return response()->json([
                 'message' => "Reglas restauradas correctamente. {$count} fuentes cargadas.",

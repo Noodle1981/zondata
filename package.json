@@ -11,7 +11,7 @@
         "db:cleanup:dry": "python scrapers/cleanup_non_climate.py --dry-run",
         "db:backfill": "python scrapers/backfill_climate.py",
         "db:backfill:dry": "python scrapers/backfill_climate.py --dry-run",
-        "start": "concurrently --names \"VITE,SCRAPER\" --prefix-colors \"cyan,yellow\" \"npm run dev\" \"npm run scraper\""
+        "start": "npm run scraper"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

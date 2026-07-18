@@ -22,11 +22,13 @@ class ScraperSourceSeeder extends Seeder
             [
                 'domain'               => 'diariodecuyo.com.ar',
                 'name'                 => 'Diario de Cuyo',
-                'type'                 => 'rss',
+                'type'                 => 'html',
                 'scrape_urls'          => [
-                    'https://diariodecuyo.com.ar/rss/pages/policiales.xml',
-                    'https://diariodecuyo.com.ar/rss/pages/san-juan.xml',
+                    'https://www.diariodecuyo.com.ar/',
+                    'https://www.diariodecuyo.com.ar/san-juan/',
+                    'https://www.diariodecuyo.com.ar/policiales/',
                 ],
+                'article_selector'     => 'href=\"(https://www\.diariodecuyo\.com\.ar/[a-z-]+/[a-z0-9-]+-n\d+)\"[^>]*title=\"Diario de Cuyo\s*\|\s*([^\"]+)\"',
                 'sanitize_exclusions'  => ['Hospital Rawson'],
                 'ignore_terms'         => [],
                 'deep_fetch'           => true,
@@ -42,6 +44,8 @@ class ScraperSourceSeeder extends Seeder
                 'scrape_urls'          => [
                     'https://www.tiempodesanjuan.com/rss/pages/Policiales.xml',
                     'https://www.tiempodesanjuan.com/rss/pages/home.xml',
+                    'https://www.tiempodesanjuan.com/rss/pages/san-juan.xml',
+                    'https://www.tiempodesanjuan.com/rss/pages/mineria.xml',
                 ],
                 'sanitize_exclusions'  => ['Hospital Rawson'],
                 'ignore_terms'         => [],
@@ -58,6 +62,7 @@ class ScraperSourceSeeder extends Seeder
                 'scrape_urls'          => [
                     'https://www.diariohuarpe.com/rss/policiales.xml',
                     'https://www.diariohuarpe.com/rss/portada.xml',
+                    'https://www.diariohuarpe.com/rss/provinciales.xml',
                 ],
                 'sanitize_exclusions'  => [],
                 'ignore_terms'         => [],
@@ -123,7 +128,10 @@ class ScraperSourceSeeder extends Seeder
                 'domain'               => 'nuevomundosj.com.ar',
                 'name'                 => 'Nuevo Mundo',
                 'type'                 => 'rss',
-                'scrape_urls'          => ['https://nuevomundosj.com.ar/category/policiales/feed/'],
+                'scrape_urls'          => [
+                    'https://nuevomundosj.com.ar/category/policiales/feed/',
+                    'https://nuevomundosj.com.ar/category/locales/feed/',
+                ],
                 'sanitize_exclusions'  => [],
                 'ignore_terms'         => [],
                 'deep_fetch'           => true,

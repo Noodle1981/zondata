@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use Backpack\CRUD\app\Models\Traits\CrudTrait;
 use Illuminate\Database\Eloquent\Model;
 
 class ScraperSource extends Model
 {
+    use CrudTrait;
     protected $fillable = [
         'domain',
         'name',
@@ -20,6 +22,10 @@ class ScraperSource extends Model
         'duplicate_check',
         'active',
         'priority',
+        'last_scraped_at',
+        'last_article_at',
+        'is_broken',
+        'error_message',
     ];
 
     protected $casts = [
@@ -30,6 +36,9 @@ class ScraperSource extends Model
         'duplicate_check'      => 'boolean',
         'active'               => 'boolean',
         'priority'             => 'integer',
+        'last_scraped_at'      => 'datetime',
+        'last_article_at'      => 'datetime',
+        'is_broken'            => 'boolean',
     ];
 
     /**

@@ -6,14 +6,7 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/dashboard_public', function () {
+Route::get('/data', function () {
     return view('welcome');
 });
 
-Route::get('/dashboard_públic', function () {
-    return view('welcome');
-});
-
-Route::get('/dashboard_premium', function () {
-    return view('welcome');
-});

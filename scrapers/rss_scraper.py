@@ -87,25 +87,25 @@ RULES = load_rules()
 CONTEXT_WIND = [
     # Fenómenos
     "zonda", "viento zonda", "viento sur", "llegó el frío", "frente frío", "ráfagas", "vientos fuertes",
-    "tormenta de viento", "temporal de viento",
+    "tormenta de viento", "temporal de viento", "temporal", "temporales",
     # Daños concretos (también aplica sin contexto de viento explícito)
     "voló el techo", "volaron techos", "voló un techo", "techo volado",
     "árbol caído", "arboles caidos", "árboles caídos", "árbol cayó",
     "cables caídos", "cables cortados", "sin luz por viento",
     "voladura de techo", "voladuras de techo",
     # Tormentas
-    "tormenta", "tormenta eléctrica", "granizo", "granizó", "lluvia torrencial", "lluvias fuertes",
+    "tormenta", "tormenta eléctrica", "granizo", "granizos", "granizó", "lluvia", "lluvias", "lluvia torrencial", "lluvias fuertes",
     # Inundaciones
     "inundación", "inundó", "anegado", "anegamiento",
     # Crecientes
-    "creciente", "crecida", "desbordó", "desborde del río", "quebrada crecida",
+    "creciente", "crecidas", "crecida", "desbordó", "desborde del río", "quebrada crecida",
     # Derrumbes
-    "derrumbe", "desprendimiento", "alud", "piedras en la ruta", "caída de rocas",
+    "derrumbe", "derrumbes", "desprendimiento", "alud", "piedras en la ruta", "caída de rocas",
     "corte de ruta", "ruta cortada por piedras", "ruta cortada por agua",
     # Nevada / Helada
-    "nieve", "nevada", "nevó", "helada", "escarcha",
+    "nieve", "nevada", "nevadas", "nevó", "helada", "escarcha",
     # Fuego climático
-    "incendio forestal", "hectáreas quemadas", "incendio de pastizales",
+    "incendio", "incendios", "incendio forestal", "hectáreas quemadas", "incendio de pastizales",
     # Calor extremo / Sequía
     "ola de calor", "sequía"
 ]
@@ -161,10 +161,84 @@ FATAL_KEYWORDS = [
 ]
 
 WIND_MAPPING = {
-    "arboles-caidos": ["árbol", "arbol", "ramas", "caída de árboles", "caida de arbol"],
-    "corte-energia": ["corte de luz", "sin luz", "energía san juan", "transformador", "cables cortados"],
-    "incendio-pastizales": ["incendio", "fuego", "bomberos", "pastizales"],
-    "techo-volado": ["techo", "voladura", "chapa"]
+    # Árboles caídos / viento con daños directos
+    "arboles-caidos": [
+        "árbol caído", "árbol caido", "arbol caído", "arbol caido",
+        "caída de árboles", "caida de arboles", "caída de árbol", "caida de arbol",
+        "ramas", "rama caída", "rama caida"
+    ],
+    # Techos / chapas voladas
+    "techo-volado": ["techo", "voladura", "chapa", "volado", "techo voló", "techo volo"],
+    # Cortes de energía eléctrica por temporal
+    "corte-energia": [
+        "corte de luz", "sin luz", "energía san juan", "transformador",
+        "cables cortados", "postes caídos", "postes caidos", "sin electricidad",
+        "sin energía", "sin energia", "apagón", "apagon"
+    ],
+    # Granizo
+    "granizo": [
+        "granizo", "granizos", "granizada", "granizó", "granizo fuerte",
+        "caída de granizo", "caida de granizo", "piedras de granizo"
+    ],
+    # Tormenta eléctrica / rayos
+    "tormenta-electrica": [
+        "rayo", "rayos", "tormenta eléctrica", "tormenta electrica",
+        "relámpago", "relampago", "descarga eléctrica", "descarga electrica",
+        "tormenta de rayos"
+    ],
+    # Inundación urbana
+    "inundacion-urbana": [
+        "inundación", "inundacion", "inundó", "inundo", "anegó", "anego",
+        "anegamiento", "calles inundadas", "barrio inundado", "agua en las calles",
+        "agua en calles", "vecinos inundados", "casas inundadas"
+    ],
+    # Crecida de río
+    "creciente-rio": [
+        "creciente del río", "creciente del rio", "río creció", "rio crecio",
+        "desbordó el río", "desborde del rio", "crecida del río", "crecida del rio",
+        "río desbordado", "rio desbordado", "zanjón", "zanjon"
+    ],
+    # Crecida de quebrada / arroyo
+    "creciente-quebrada": [
+        "quebrada", "arroyo crecido", "cauce", "cauce desbordado",
+        "alud de barro", "barro", "lodo", "aluvión", "aluvion", "alud de lodo"
+    ],
+    # Corte de ruta por agua
+    "corte-ruta-por-agua": [
+        "ruta cortada por agua", "ruta anegada", "paso cortado por lluvia",
+        "camino cortado", "acceso cortado", "ruta cortada lluvia", "corte de ruta agua"
+    ],
+    # Derrumbe en ruta
+    "derrumbe-ruta": [
+        "derrumbe", "derrumbó", "derrumbo", "derrumbe en ruta", "derrumbe ruta",
+        "corte de ruta por derrumbe", "ruta bloqueada por derrumbe",
+        "desborde de ladera"
+    ],
+    # Desprendimiento de rocas
+    "desprendimiento-rocas": [
+        "desprendimiento de rocas", "desprendimiento rocoso", "caída de rocas",
+        "caida de rocas", "rodado", "piedras en la ruta", "desprendimiento en sierra",
+        "desprendimiento en montaña"
+    ],
+    # Alud
+    "alud": [
+        "alud", "avalancha", "deslizamiento", "deslizamiento de tierra",
+        "deslizamiento de laderas"
+    ],
+    # Nevada / helada
+    "nevada": [
+        "nevada", "nevó", "nevo", "nieve en", "nevadas", "copos de nieve",
+        "nieve en la cordillera", "nieve en las sierras", "nieve en san juan"
+    ],
+    "helada": [
+        "helada", "heladas", "temperatura bajo cero", "bajo cero",
+        "congelamiento", "escarcha", "hielo en ruta", "ruta helada"
+    ],
+    # Ola de calor
+    "ola-de-calor": [
+        "ola de calor", "calor extremo", "temperatura récord", "temperatura record",
+        "golpe de calor", "calor sofocante"
+    ],
 }
 
 ACCIDENT_MAPPING = {
@@ -312,11 +386,34 @@ def save_to_cache(query, lat, lon, is_approx, source='google', location_type='GE
             except Exception:
                 pass
 
+# Coordenadas estáticas aproximadas (centro geográfico/plaza municipal) para fallback local
+DEPARTMENT_COORDINATES = {
+    "capital": (-31.5375, -68.5364),
+    "rawson": (-31.5471, -68.5262),
+    "rivadavia": (-31.5284, -68.5878),
+    "chimbas": (-31.4981, -68.5303),
+    "santa lucia": (-31.5318, -68.4989),
+    "pocito": (-31.6583, -68.5822),
+    "caucete": (-31.6519, -68.2744),
+    "jachal": (-30.2403, -68.7467),
+    "albardon": (-31.4287, -68.5281),
+    "sarmiento": (-31.9934, -68.5218),
+    "25 de mayo": (-31.8156, -67.9256),
+    "9 de julio": (-31.6425, -68.3908),
+    "san martin": (-31.4292, -68.2811),
+    "angaco": (-31.3925, -68.4239),
+    "valle fertil": (-30.6369, -67.4697),
+    "iglesia": (-30.2942, -69.1302),
+    "calingasta": (-31.2508, -69.4181),
+    "ullum": (-31.4194, -68.7303),
+    "zonda": (-31.5544, -68.7289)
+}
+
 def get_db_fallback_coords(text, conn=None):
     """
-    Busca en el texto de la noticia si se menciona algún departamento o localidad,
-    y si coincide, consulta en la base de datos sus coordenadas (lat/lon).
-    Retorna (lat, lon, name_encontrado, tipo) o None.
+    Busca en el texto de la noticia si se menciona algún departamento o localidad.
+    Si coincide, consulta en la base de datos y retorna (lat, lon, name_encontrado, tipo)
+    usando coordenadas de la DB o el diccionario estático del departamento.
     """
     should_close = False
     try:
@@ -325,35 +422,89 @@ def get_db_fallback_coords(text, conn=None):
             should_close = True
         cursor = conn.cursor()
         
-        # Obtener todos los departamentos con sus coordenadas
-        cursor.execute("SELECT id, name, lat, lon FROM departments WHERE lat IS NOT NULL")
-        depts = cursor.fetchall()
+        # Cargar los nombres de departamentos en minúsculas para exclusión/clasificación
+        cursor.execute("SELECT name FROM departments")
+        dept_names_lower = {d[0].lower() for d in cursor.fetchall()}
         
-        # Buscar departamentos en el texto (prioridad departamentos)
-        # Normalizar el texto para hacer búsqueda robusta
+        # 1. Buscar localidades primero (máxima especificidad)
+        cursor.execute("""
+            SELECT l.name, d.name, l.lat, l.lon 
+            FROM localities l
+            JOIN departments d ON l.department_id = d.id
+        """)
+        locs = cursor.fetchall()
+        
+        # Separar en específicas (ej: Barreal) y genéricas (cuyo nombre coincide con un departamento, ej: Calingasta)
+        locs_specific = []
+        locs_generic = []
+        for row in locs:
+            if row[0].lower() in dept_names_lower:
+                locs_generic.append(row)
+            else:
+                locs_specific.append(row)
+                
+        locs_specific_sorted = sorted(locs_specific, key=lambda x: len(x[0]), reverse=True)
+        locs_generic_sorted = sorted(locs_generic, key=lambda x: len(x[0]), reverse=True)
+        locs_sorted = locs_specific_sorted + locs_generic_sorted
+        
         text_n = normalize_text(text.lower())
         
-        for dept_id, dept_name, lat, lon in depts:
-            dept_n = normalize_text(dept_name.lower())
-            # Exigir límites de palabra para evitar falsos positivos
-            pattern = r'\b' + re.escape(dept_n) + r'\b'
-            if re.search(pattern, text_n):
-                if should_close:
-                    conn.close()
-                return float(lat), float(lon), dept_name, 'department'
-                
-        # Si no hay departamento, buscar localidades
-        cursor.execute("SELECT id, name, lat, lon FROM localities WHERE lat IS NOT NULL")
-        locs = cursor.fetchall()
-        for loc_id, loc_name, lat, lon in locs:
+        for loc_name, dept_name, lat, lon in locs_sorted:
             loc_n = normalize_text(loc_name.lower())
             if len(loc_n) > 4: # evitar palabras muy cortas
                 pattern = r'\b' + re.escape(loc_n) + r'\b'
-                if re.search(pattern, text_n):
+                match_pos = re.search(pattern, text_n)
+                if match_pos:
+                    # Si la localidad es "Zonda" y está precedida por "viento" o "ráfaga", asumimos que habla del viento
+                    if loc_n == "zonda":
+                        start_idx = match_pos.start()
+                        pre_text = text_n[max(0, start_idx-15):start_idx]
+                        if "viento" in pre_text or "rafaga" in pre_text or "rafagas" in pre_text:
+                            continue
+                            
+                    # Si tiene coordenadas explícitas en DB, usarlas
+                    if lat is not None and lon is not None:
+                        if should_close:
+                            conn.close()
+                        return float(lat), float(lon), loc_name, 'locality'
+                    
+                    # Fallback al centro de su departamento correspondiente
+                    dept_clean = normalize_text(dept_name.lower())
+                    if dept_clean in DEPARTMENT_COORDINATES:
+                        d_lat, d_lon = DEPARTMENT_COORDINATES[dept_clean]
+                        if should_close:
+                            conn.close()
+                        return d_lat, d_lon, loc_name, 'locality'
+                    
+        # 2. Si no hay localidad, buscar departamentos (fallback)
+        cursor.execute("SELECT name, lat, lon FROM departments")
+        depts = cursor.fetchall()
+        for dept_name, lat, lon in depts:
+            dept_n = normalize_text(dept_name.lower())
+            pattern = r'\b' + re.escape(dept_n) + r'\b'
+            match_pos = re.search(pattern, text_n)
+            if match_pos:
+                # Si el departamento es "Zonda" y está precedida por "viento" o "ráfaga", asumimos que habla del viento
+                if dept_n == "zonda":
+                    start_idx = match_pos.start()
+                    pre_text = text_n[max(0, start_idx-15):start_idx]
+                    if "viento" in pre_text or "rafaga" in pre_text or "rafagas" in pre_text:
+                        continue
+                        
+                # Si tiene coordenadas en DB, usarlas
+                if lat is not None and lon is not None:
                     if should_close:
                         conn.close()
-                    return float(lat), float(lon), loc_name, 'locality'
-                    
+                    return float(lat), float(lon), dept_name, 'department'
+                
+                # Fallback al diccionario en memoria
+                dept_clean = normalize_text(dept_name.lower())
+                if dept_clean in DEPARTMENT_COORDINATES:
+                    d_lat, d_lon = DEPARTMENT_COORDINATES[dept_clean]
+                    if should_close:
+                        conn.close()
+                    return d_lat, d_lon, dept_name, 'department'
+                
         if should_close:
             conn.close()
     except Exception as e:
@@ -471,6 +622,21 @@ def save_raw_article(title, description, body_text, source_url, source_name, pub
                 (title, description, body, source_name, source_url, publish_date, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (title, description, body_text, source_name, source_url, formatted_date, status, now_str, now_str))
+        
+        # Actualizar el timestamp del último artículo nuevo encontrado para esta fuente
+        if status == 'queued':
+            try:
+                from urllib.parse import urlparse
+                parsed_url = urlparse(source_url)
+                domain = parsed_url.netloc.replace("www.", "")
+                cursor.execute("""
+                    UPDATE scraper_sources 
+                    SET last_article_at = ? 
+                    WHERE domain = ?
+                """, (now_str, domain))
+            except Exception as domain_err:
+                print(f"[MONITOR][ERROR] No se pudo actualizar last_article_at para {source_url}: {domain_err}")
+
         if should_close:
             conn.commit()
             conn.close()
@@ -684,8 +850,7 @@ def clean_location_query(text):
     return cleaned
 
 BLACKLIST_KEYWORDS = [
-    "alerta", "pronóstico", "pronostico", "precaución", "precaucion", "recomiendan", 
-    "prevención", "prevencion", "llegaría", "llegaria", "internacional", "mundo",
+    "internacional", "mundo",
     "escuela", "curso", "capacitación", "capacitacion", "proyecto", "campaña", 
     "historia de", "entrevista", "emicar", "clases", "inscripción", "inscripcion",
     "allanamiento", "detenido", "detenidos", "droga", "estupefacientes", "animales silvestres",
@@ -693,8 +858,44 @@ BLACKLIST_KEYWORDS = [
     "obra vial", "obras viales", "obra pública", "obra publica", "obras públicas", "obras publicas",
     "licitación", "licitacion", "licitar", "remodelación", "remodelacion",
     "apertura de sobres", "pavimentación", "pavimentacion", "bacheo", "repavimentación", "repavimentacion",
-    "seguridad vial", "educación vial", "educacion vial", "taller de", "charlas de"
+    "seguridad vial", "educación vial", "educacion vial", "taller de capacitación", "taller de educación", "taller de manejo", "talleres de capacitación", "talleres de educación", "charlas de"
 ]
+
+PREDICTION_KEYWORDS = [
+    "se prevé", "se preve", "prevén", "preven", "se espera", "se pronostica", "pronostican", "es probable", "posibles lluvias",
+    "posible granizo", "se anuncia", "anuncian", "podría nevar", "podría llover", "podrian ocurrir",
+    "podrían ocurrir", "llegaría", "llegaria", "se anticipa", "se anticipan",
+    "alertan por", "alerta por posible", "alerta naranja", "alerta preventiva",
+    "alerta amarilla", "alerta roja", "anuncian lluvias", "pronóstico", "pronostico",
+    "pronostica lluvias", "pronostica vientos", "pronostica granizo",
+    "vientos esperados", "temperaturas previstas", "se espera lluvia",
+    "el smn anuncia", "el smn prevé", "el smn alerta", "smn emitió alerta",
+    "servicio meteorológico", "meteorológico nacional",
+    "guardia de incendios previene", "recomiendan no salir",
+    "prevención por vientos", "prevención por granizo", "precaución para transitar",
+    "se recomienda no encender", "no quemar en días de viento",
+    "evitar circular ante", "alerta por viento", "alerta por tormenta",
+    "alerta por zonda", "alerta de viento", "alerta por temporal", "alerta de temporal"
+]
+
+INCIDENT_CONFIRMED_KEYWORDS = [
+    "cayó", "cayo", "derribó", "derribo", "voló", "volo",
+    "se desbordó", "se desbordo", "inundó", "inundo",
+    "se cortó", "se corto", "quedó cortada", "quedo cortada",
+    "ardieron", "ardió", "ardio", "combaten", "combatieron",
+    "evacuaron", "evacuó", "evacuo", "evacuados", "evacuadas",
+    "nevó", "nevo", "granizó", "granizo",
+    "hubo fuertes", "registraron", "se registraron",
+    "resultaron", "ocasionó", "ocasiono", "provocó", "provoco",
+    "dejó sin", "dejo sin", "volaron techos", "postes caídos",
+    "ruta cortada", "paso cerrado", "calles anegadas",
+    "incendio", "incendios", "fuego", "ramas caídas", "ramas caidas", "árbol caído", "árbol caido",
+    "corte de luz", "sin luz", "asistieron", "asistió", "asistio", "asistencia", "asistidas",
+    "asistidos", "asistido", "desmovilizó", "desmovilizaron", "desmovilizo",
+    "cubrió", "cubrio", "cubiertos", "cubiertas", "sepultó", "sepulto", "sepultados", "sepultadas",
+    "acumuló", "acumulo", "acumulación", "acumulaciones", "temporal", "temporales", "nevada", "nevadas"
+]
+
 
 MEDIA_NAMES = {
     "diariodecuyo.com.ar": "Diario de Cuyo",
@@ -739,6 +940,13 @@ def extract_location_with_gemini(title, description, body_text):
 - La palabra 'Zonda' puede referirse al viento ("viento Zonda", "ráfagas de Zonda", "Zonda activo") o al departamento/localidad ("en Zonda", "en el departamento Zonda", "vecinos de Zonda").
 - Si se refiere al viento Zonda, clasifícalo en `wind_cause = true` y selecciona la categoría climática correspondiente (por ejemplo: `arboles-caidos`, `techo-volado`, `corte-energia`, `incendio-pastizales`, etc.) y asigna `zonda` en `phenomenon_type`.
 - Si se menciona Zonda como el lugar geográfico del hecho, devuélvelo en `location_query` como 'Zonda, San Juan, Argentina' o el lugar específico dentro del departamento, pero no actives `wind_cause` a menos que también se mencione el viento Zonda como causa del incidente.
+
+**Instrucción para Proyectos Mineros Cordilleranos**:
+- En la provincia de San Juan existen importantes proyectos mineros y de exploración en alta montaña donde ocurren tormentas de nieve, vientos fuertes y evacuaciones. Si la noticia refiere a un incidente en un proyecto minero o yacimiento (ej: Veladero, Gualcamayo, Casposo, Manantiales, Josemaría, Los Azules, El Pachón, Altar, Filo del Sol, Hualilán, Vicuña, Lama, Chinchillas, San Francisco), extrae su ubicación exacta. Devuelve 'location_query' en el formato: 'Mina [Nombre Proyecto], [Departamento], San Juan, Argentina' (ej: 'Mina Los Azules, Calingasta, San Juan, Argentina' o 'Mina Veladero, Iglesia, San Juan, Argentina').
+
+**IMPORTANTE — Solo Incidentes Reales, No Predicciones**:
+- Solo debes clasificar la noticia si reporta un incidente o fenómeno climático que ya ocurrió en el pasado o presente inmediato (ej: "cayeron árboles", "se cortó la ruta", "nevó", "se registraron incendios", "volaron techos").
+- Si la noticia es puramente preventiva, habla de una predicción meteorológica futura, una alerta preventiva sin reportar hechos sucedidos, o recomendaciones de organismos públicos para el futuro (ej: "se prevé viento", "es probable que granice", "alertan por zonda", "recomiendan no salir"), debes devolver `is_retrospective_or_historical = true` para indicarle al sistema que la descarte.
 
 Título: {title}
 Descripción: {description}
@@ -1258,6 +1466,19 @@ def fetch_article_text(url):
     return ""
 
 
+def is_blacklisted(text, blacklist_list):
+    """Verifica si el texto contiene palabras de la lista negra respetando límites de palabra para términos simples."""
+    text_n = normalize_text(text)
+    for kw in blacklist_list:
+        kw_n = normalize_text(kw)
+        if ' ' in kw_n:
+            if kw_n in text_n:
+                return True
+        else:
+            if bool(re.search(r'\b' + re.escape(kw_n) + r'\b', text_n)):
+                return True
+    return False
+
 def classify_article_with_python_rules(title, description, body_text, rule=None):
     """
     Clasifica una noticia utilizando las reglas tradicionales de Python (palabras clave y exclusiones).
@@ -1278,11 +1499,28 @@ def classify_article_with_python_rules(title, description, body_text, rule=None)
         title_desc_combined = title_desc_combined.replace(term, "")
 
     # 1. Filtros de palabras prohibidas globales
-    if any(black_word in text_to_search for black_word in BLACKLIST_KEYWORDS):
-        return None
-    if rule and rule.get("ignore_terms"):
-        if any(term in text_to_search for term in rule["ignore_terms"]):
+    has_blacklist = is_blacklisted(text_to_search, BLACKLIST_KEYWORDS)
+    if has_blacklist:
+        # Excepción: Si contiene una confirmación clara de incidente climático/incendio real,
+        # permitimos que pase a pesar de contener términos policiales como "detenido" o "detenidos".
+        is_strong_climate = any(kw in text_to_search for kw in ["incendio", "incendios", "fuego", "viento zonda", "temporal", "nieve", "nevada", "nevadas", "inundacion", "crecida", "derrumbe", "arboles caidos", "caida de arboles"])
+        if not is_strong_climate:
             return None
+        # Si es climático pero contiene ruidos no deseados irremediables (ej. capacitaciones, cursos), descartamos
+        always_ignore = ["curso", "capacitación", "capacitacion", "taller de capacitación", "taller de educación", "taller de manejo", "charlas de", "inscripción", "inscripcion", "proyecto de ley", "proyecto de resolucion", "proyecto legislativo", "proyecto de ordenanza", "campaña"]
+        if is_blacklisted(text_to_search, always_ignore):
+            return None
+
+    if rule and rule.get("ignore_terms"):
+        if is_blacklisted(text_to_search, rule["ignore_terms"]):
+            return None
+
+    # 1b. Filtrar predicciones / alertas preventivas (no son incidentes reales)
+    is_prediction = any(kw in text_to_search for kw in PREDICTION_KEYWORDS)
+    has_confirmed_incident = any(kw in text_to_search for kw in INCIDENT_CONFIRMED_KEYWORDS)
+    if is_prediction and not has_confirmed_incident:
+        print(f"[RULES][PREDICTION-SKIP] Noticia es predicción/alerta preventiva (omitida): '{title[:60]}...'")
+        return None
 
     # 2. Filtrado de provincias (exclusión de noticias fuera de San Juan)
     mentions_other_province = any(prov in text_to_search for prov in BLACKLIST_PROVINCIAS)
@@ -1544,12 +1782,16 @@ def send_to_api(incident_data):
         res = requests.post(API_URL, json=incident_data, headers={'Accept': 'application/json'})
         if res.status_code == 201:
             print(f"[OK] Incidente guardado: {incident_data['fuente_nombre']} - {incident_data['titulo']}")
+            return True
         elif res.status_code == 200:
             print(f"[DUPLICADO] {incident_data['titulo']}")
+            return True
         else:
             print(f"[ERROR] {res.status_code}: {res.text}")
+            return False
     except Exception as e:
         print(f"[CONEXION FALLIDA] No se pudo enviar a la API: {e}")
+        return False
 
 def process_queued_articles():
     """Procesa todas las noticias de raw_articles con estado 'queued' utilizando analyze_news"""
@@ -1644,15 +1886,25 @@ def process_queued_articles():
                     except Exception as ce:
                         print(f"[CLIMATE][ERROR] Falló enriquecimiento climático en caliente: {ce}")
 
+                # Liberar bloqueos de SQLite antes del request de red a la API (evita 504 por lock contention)
+                conn.commit()
+
                 # Si clasifica como incidente y se geocodifica, enviar a Laravel API
-                send_to_api(incident)
-                # Actualizar estado a 'processed'
-                cursor.execute(
-                    "UPDATE raw_articles SET status = 'processed', error_message = NULL, updated_at = ? WHERE id = ?",
-                    (now_str, art_id)
-                )
+                api_success = send_to_api(incident)
+
+                cursor = conn.cursor()
+                if api_success:
+                    # Actualizar estado a 'processed'
+                    cursor.execute(
+                        "UPDATE raw_articles SET status = 'processed', error_message = NULL, updated_at = ? WHERE id = ?",
+                        (now_str, art_id)
+                    )
+                else:
+                    raise Exception("Fallo en la comunicación con la API (ver log de send_to_api)")
             else:
                 # Si no clasifica como incidente, marcar como 'ignored'
+                conn.commit()
+                cursor = conn.cursor()
                 cursor.execute(
                     "UPDATE raw_articles SET status = 'ignored', error_message = NULL, updated_at = ? WHERE id = ?",
                     (now_str, art_id)
@@ -1694,7 +1946,7 @@ def process_queued_articles():
                 print(f"[PROCESADOR][ERROR] No se pudo guardar el estado de error en la DB para ID {art_id}: {e2}")
 
         # Pequeña pausa para no saturar APIs si es procesado
-        time.sleep(1)
+        time.sleep(3)
 
     # Cerrar la conexión compartida
     try:
@@ -1713,6 +1965,10 @@ def scrape_html():
             rule = get_source_rule(SCRAPER_RULES, domain)
             if rule["type"] != "html":
                 continue
+            
+            has_error = False
+            last_error = None
+            
             scrape_urls = rule.get("scrape_urls", [])
             for scrape_url in scrape_urls:
                 try:
@@ -1762,8 +2018,34 @@ def scrape_html():
                                 save_raw_article(title, desc, body_text, link, medio, status='queued', conn=conn)
                             else:
                                 print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
+                    else:
+                        has_error = True
+                        last_error = f"HTTP Error status code {response.status_code} for URL {scrape_url}"
                 except Exception as e:
+                    has_error = True
+                    last_error = str(e)
                     print(f"Error procesando HTML de {domain} - {scrape_url}: {e}")
+            
+            # Update scraper_sources table for this domain
+            try:
+                cursor = conn.cursor()
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if has_error:
+                    cursor.execute("""
+                        UPDATE scraper_sources 
+                        SET last_scraped_at = ?, is_broken = 1, error_message = ? 
+                        WHERE domain = ?
+                    """, (now_str, last_error, domain))
+                else:
+                    cursor.execute("""
+                        UPDATE scraper_sources 
+                        SET last_scraped_at = ?, is_broken = 0, error_message = NULL 
+                        WHERE domain = ?
+                    """, (now_str, domain))
+                conn.commit()
+            except Exception as db_err:
+                print(f"[MONITOR][ERROR] No se pudo guardar estado de monitoreo para {domain}: {db_err}")
+        conn.commit()
     finally:
         try:
             conn.close()
@@ -1779,6 +2061,10 @@ def scrape_rss():
             rule = get_source_rule(SCRAPER_RULES, domain)
             if rule["type"] != "rss":
                 continue
+            
+            has_error = False
+            last_error = None
+            
             scrape_urls = rule.get("scrape_urls", [])
             for feed_url in scrape_urls:
                 try:
@@ -1826,8 +2112,34 @@ def scrape_rss():
                                     save_raw_article(title, desc, body_text, link, fuente_nombre, pub_date_str, status='queued', conn=conn)
                                 else:
                                     print(f"[RULES][INGEST-SKIP] Titular no corresponde a incidente (ignorado): '{title[:60]}...'")
+                    else:
+                        has_error = True
+                        last_error = f"HTTP Error status code {response.status_code} for URL {feed_url}"
                 except Exception as e:
+                    has_error = True
+                    last_error = str(e)
                     print(f"Error procesando el feed {feed_url}: {e}")
+            
+            # Update scraper_sources table for this domain
+            try:
+                cursor = conn.cursor()
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if has_error:
+                    cursor.execute("""
+                        UPDATE scraper_sources 
+                        SET last_scraped_at = ?, is_broken = 1, error_message = ? 
+                        WHERE domain = ?
+                    """, (now_str, last_error, domain))
+                else:
+                    cursor.execute("""
+                        UPDATE scraper_sources 
+                        SET last_scraped_at = ?, is_broken = 0, error_message = NULL 
+                        WHERE domain = ?
+                    """, (now_str, domain))
+                conn.commit()
+            except Exception as db_err:
+                print(f"[MONITOR][ERROR] No se pudo guardar estado de monitoreo para {domain}: {db_err}")
+        conn.commit()
     finally:
         try:
             conn.close()

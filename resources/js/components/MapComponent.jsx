@@ -5,7 +5,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { es } from 'date-fns/locale/es';
 import L from 'leaflet';
-import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw, MapPin, AlertCircle, Clock, Skull, CheckCircle } from 'lucide-react';
+import { Menu, X, Wind, Zap, Car, AlertTriangle, ChevronDown, ChevronUp, Calendar, Database, ChevronLeft, Flame, BarChart2, Check, TrendingUp, Activity, RotateCw, MapPin, AlertCircle, Clock, Skull, CheckCircle, CloudRain, CloudSnow } from 'lucide-react';
 import IncidentsSummaryModal from './IncidentsSummaryModal';
 
 // Fix for default Leaflet icons in React
@@ -38,32 +38,100 @@ const MAP_LAYERS = {
     }
 };
 
+
+
+// Helper to map DB category slug to UI filter tab
+const getIncidentGroup = (slug) => {
+    if (!slug) return 'rayos';
+    const s = slug.toLowerCase();
+    if (s.includes('granizo')) return 'granizo';
+    if (s.includes('arbol') || s.includes('rama') || s.includes('techo') || s.includes('viento') || s.includes('zonda') || s.includes('sur') || s.includes('energia') || s.includes('corte')) return 'ramas';
+    if (s.includes('inundacion') || s.includes('creciente') || s.includes('agua') || s.includes('lluvia')) return 'inundacion';
+    if (s.includes('incendio') || s.includes('siniestro')) return 'incendio';
+    if (s.includes('nevada') || s.includes('helada') || s.includes('nieve') || s.includes('frio')) return 'nieve';
+    return 'rayos'; // default/fallback
+};
+
+// Configuración de visualización de cada categoría en la app
+const CATEGORIES_CONFIG = {
+    ramas: {
+        label: 'Ramas / Viento',
+        color: '#EAB308', // Yellow
+        bgColor: 'bg-[#EAB308]/10',
+        borderColor: 'border-[#EAB308]/40',
+        textColor: 'text-[#EAB308]',
+        glowColor: '0 0 14px rgba(234,179,8,0.08)',
+        accentColor: 'rgba(234,179,8,0.18)',
+        iconName: 'Wind',
+        svgPath: 'M2 12h5m2 0h12m-2-4l2 4-2 4M3 8h12a2 2 0 0 0 2-2 2 2 0 0 0-2-2M3 16h10a2 2 0 0 1 2 2 2 2 0 0 1-2 2'
+    },
+    granizo: {
+        label: 'Granizos',
+        color: '#A855F7', // Purple
+        bgColor: 'bg-[#A855F7]/10',
+        borderColor: 'border-[#A855F7]/40',
+        textColor: 'text-[#C084FC]',
+        glowColor: '0 0 14px rgba(168,85,247,0.08)',
+        accentColor: 'rgba(168,85,247,0.18)',
+        iconName: 'AlertTriangle',
+        svgPath: 'M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25M8 16h.01M8 20h.01M12 18h.01M12 22h.01M16 16h.01M16 20h.01'
+    },
+    inundacion: {
+        label: 'Inundaciones',
+        color: '#3B82F6', // Blue
+        bgColor: 'bg-[#3B82F6]/10',
+        borderColor: 'border-[#3B82F6]/40',
+        textColor: 'text-[#60A5FA]',
+        glowColor: '0 0 14px rgba(59,130,246,0.08)',
+        accentColor: 'rgba(59,130,246,0.18)',
+        iconName: 'CloudRain',
+        svgPath: 'M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25M10 20l-2 2M14 20l-2 2M18 20l-2 2'
+    },
+    incendio: {
+        label: 'Incendios',
+        color: '#DC2626', // Red
+        bgColor: 'bg-[#DC2626]/10',
+        borderColor: 'border-[#DC2626]/40',
+        textColor: 'text-[#F87171]',
+        glowColor: '0 0 14px rgba(220,38,38,0.08)',
+        accentColor: 'rgba(220,38,38,0.18)',
+        iconName: 'Flame',
+        svgPath: 'M12 2c0 0-2 4-2 6s1 3 3 3 2-2 2-3c4 5-1 11-1 11s-5-3-5-7c0-2 2-6 3-10z'
+    },
+    nieve: {
+        label: 'Nieve',
+        color: '#06B6D4', // Cyan
+        bgColor: 'bg-[#06B6D4]/10',
+        borderColor: 'border-[#06B6D4]/40',
+        textColor: 'text-[#22D3EE]',
+        glowColor: '0 0 14px rgba(6,182,212,0.08)',
+        accentColor: 'rgba(6,182,212,0.18)',
+        iconName: 'CloudSnow',
+        svgPath: 'M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25M8 18h.01M12 18h.01M16 18h.01'
+    },
+    rayos: {
+        label: 'Rayos',
+        color: '#F97316', // Orange
+        bgColor: 'bg-[#F97316]/10',
+        borderColor: 'border-[#F97316]/40',
+        textColor: 'text-[#FB923C]',
+        glowColor: '0 0 14px rgba(249,115,22,0.08)',
+        accentColor: 'rgba(249,115,22,0.18)',
+        iconName: 'Zap',
+        svgPath: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z'
+    }
+};
+
 // Custom Icon generator based on category type
 const createCustomIcon = (type, isApproximate = false, isFatal = false, title = "Incidente") => {
-    let color = '#002D62'; 
-    
-    // Iconos SVG Ultra-Simplificados (Blancos)
-    const icons = {
-        wind: 'M2 12h5m2 0h12m-2-4l2 4-2 4M3 8h12a2 2 0 0 0 2-2 2 2 0 0 0-2-2M3 16h10a2 2 0 0 1 2 2 2 2 0 0 1-2 2',
-        car: 'M17 11l2 3v5c0 .6-.4 1-1 1h-1c-.6 0-1-.4-1-1v-1H6v1c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1v-5l2-3V6c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v5z M6 13h12',
-        fire: 'M12 2c0 0-2 4-2 6s1 3 3 3 2-2 2-3c4 5-1 11-1 11s-5-3-5-7c0-2 2-6 3-10z',
-        skull: 'M9 10a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM12 2a8 8 0 0 0-8 8c0 2 1 4 3 6v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2c2-2 3-4 3-6a8 8 0 0 0-8-8z'
-    };
-
-    let selectedIcon = icons.car;
+    const group = getIncidentGroup(type);
+    const config = CATEGORIES_CONFIG[group] || CATEGORIES_CONFIG.rayos;
+    let color = config.color;
+    let selectedIcon = config.svgPath;
 
     if (isFatal) {
         color = '#4B5563'; 
-        selectedIcon = icons.skull;
-    } else if (['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => type.toLowerCase().includes(k))) {
-        color = '#EAB308'; 
-        selectedIcon = icons.wind;
-    } else if (['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => type.toLowerCase().includes(k))) {
-        color = '#2563EB'; 
-        selectedIcon = icons.car;
-    } else if (type.toLowerCase().includes('incendio') || type.toLowerCase().includes('siniestro')) {
-        color = '#DC2626'; 
-        selectedIcon = icons.fire;
+        selectedIcon = 'M9 10a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM12 2a8 8 0 0 0-8 8c0 2 1 4 3 6v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2c2-2 3-4 3-6a8 8 0 0 0-8-8z';
     }
 
     const svgIcon = `
@@ -76,7 +144,7 @@ const createCustomIcon = (type, isApproximate = false, isFatal = false, title = 
             <g transform="translate(6, 4) scale(0.5)" fill="white">
                 <path d="${selectedIcon}" stroke="white" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" />
             </g>
-            ${isApproximate ? '<circle cx="12" cy="9" r="9" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="2,2" />' : ''}
+            ${isApproximate ? `<circle cx="12" cy="9" r="9" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="2,2" />` : ''}
         </svg>
     `;
 
@@ -159,7 +227,7 @@ const MapComponent = () => {
         const day = String(d.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     });
-    const [visibleTabs, setVisibleTabs] = useState(['wind', 'accident', 'fire']); // Por defecto todos activos
+        const [visibleTabs, setVisibleTabs] = useState(['ramas', 'granizo', 'inundacion', 'incendio', 'nieve', 'rayos']); // Por defecto todos activos
     const [loading, setLoading] = useState(false);
     const [premiumError, setPremiumError] = useState(false);
     const [lastSync, setLastSync] = useState(null);       
@@ -169,7 +237,7 @@ const MapComponent = () => {
     const prevIncidentsCountRef = useRef(0);
     const [premiumModalOpen, setPremiumModalOpen] = useState(false);
     const [modalView, setModalView] = useState('pricing'); // 'pricing' or 'dashboard'
-    const [activeDashboardSection, setActiveDashboardSection] = useState('general'); // 'general', 'traffic', 'fire', 'wind'
+    const [activeDashboardSection, setActiveDashboardSection] = useState('general'); // 'general', 'rain', 'fire', 'wind'
     const [provinceGeoJSON, setProvinceGeoJSON] = useState(null);
     const [departmentsGeoJSON, setDepartmentsGeoJSON] = useState(null);
 
@@ -196,21 +264,18 @@ const MapComponent = () => {
 
     // Filtrar incidentes según el estado de las pestañas
     const filteredIncidents = incidents.filter(incident => {
-        const slug = incident.category?.slug;
-        const isWind = ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug?.includes(k));
-        const isAccident = ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug?.includes(k));
-        const isFire = slug?.includes('incendio') || slug?.includes('siniestro');
-        
-        return (isWind && visibleTabs.includes('wind')) || 
-               (isAccident && visibleTabs.includes('accident')) || 
-               (isFire && visibleTabs.includes('fire'));
+        const group = getIncidentGroup(incident.category?.slug);
+        return visibleTabs.includes(group);
     });
 
     // Calcular conteos por pestaña
     const tabCounts = {
-        wind: incidents.filter(i => ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => i.category?.slug?.includes(k))).length,
-        accident: incidents.filter(i => ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => i.category?.slug?.includes(k))).length,
-        fire: incidents.filter(i => i.category?.slug?.includes('incendio') || i.category?.slug?.includes('siniestro')).length
+        ramas: incidents.filter(i => getIncidentGroup(i.category?.slug) === 'ramas').length,
+        granizo: incidents.filter(i => getIncidentGroup(i.category?.slug) === 'granizo').length,
+        inundacion: incidents.filter(i => getIncidentGroup(i.category?.slug) === 'inundacion').length,
+        incendio: incidents.filter(i => getIncidentGroup(i.category?.slug) === 'incendio').length,
+        nieve: incidents.filter(i => getIncidentGroup(i.category?.slug) === 'nieve').length,
+        rayos: incidents.filter(i => getIncidentGroup(i.category?.slug) === 'rayos').length
     };
 
     // Relative time helper — "hace X minutos"
@@ -378,58 +443,37 @@ const MapComponent = () => {
 
                 {/* ══ CATEGORY FILTER PILLS ══ */}
                 <div className="px-4 py-3 border-b border-white/[0.06]">
-                    <div className="flex gap-2">
-                        {/* Viento */}
-                        <button
-                            onClick={() => toggleTab('wind')}
-                            className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border transition-all duration-200 active:scale-95 ${
-                                visibleTabs.includes('wind')
-                                    ? 'bg-[#EAB308]/10 border-[#EAB308]/40 text-[#EAB308] shadow-[0_0_12px_rgba(234,179,8,0.12)]'
-                                    : 'bg-white/[0.03] border-white/[0.05] text-white/25 hover:text-white/50 hover:bg-white/[0.05] hover:border-white/10'
-                            }`}
-                        >
-                            <Wind size={16} strokeWidth={2} />
-                            <span className="text-[9px] font-black uppercase tracking-wide leading-none">Viento</span>
-                            {tabCounts.wind > 0 && (
-                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
-                                    visibleTabs.includes('wind') ? 'bg-[#EAB308]/20 text-[#EAB308]' : 'bg-white/10 text-white/30'
-                                }`}>{tabCounts.wind}</span>
-                            )}
-                        </button>
-                        {/* Tránsito */}
-                        <button
-                            onClick={() => toggleTab('accident')}
-                            className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border transition-all duration-200 active:scale-95 ${
-                                visibleTabs.includes('accident')
-                                    ? 'bg-[#2563EB]/10 border-[#2563EB]/40 text-[#60A5FA] shadow-[0_0_12px_rgba(37,99,235,0.12)]'
-                                    : 'bg-white/[0.03] border-white/[0.05] text-white/25 hover:text-white/50 hover:bg-white/[0.05] hover:border-white/10'
-                            }`}
-                        >
-                            <Car size={16} strokeWidth={2} />
-                            <span className="text-[9px] font-black uppercase tracking-wide leading-none">Tránsito</span>
-                            {tabCounts.accident > 0 && (
-                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
-                                    visibleTabs.includes('accident') ? 'bg-[#2563EB]/20 text-[#60A5FA]' : 'bg-white/10 text-white/30'
-                                }`}>{tabCounts.accident}</span>
-                            )}
-                        </button>
-                        {/* Incendios */}
-                        <button
-                            onClick={() => toggleTab('fire')}
-                            className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border transition-all duration-200 active:scale-95 ${
-                                visibleTabs.includes('fire')
-                                    ? 'bg-[#DC2626]/10 border-[#DC2626]/40 text-[#F87171] shadow-[0_0_12px_rgba(220,38,38,0.12)]'
-                                    : 'bg-white/[0.03] border-white/[0.05] text-white/25 hover:text-white/50 hover:bg-white/[0.05] hover:border-white/10'
-                            }`}
-                        >
-                            <Flame size={16} strokeWidth={2} />
-                            <span className="text-[9px] font-black uppercase tracking-wide leading-none">Incendios</span>
-                            {tabCounts.fire > 0 && (
-                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${
-                                    visibleTabs.includes('fire') ? 'bg-[#DC2626]/20 text-[#F87171]' : 'bg-white/10 text-white/30'
-                                }`}>{tabCounts.fire}</span>
-                            )}
-                        </button>
+                    <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(CATEGORIES_CONFIG).map(([key, config]) => {
+                            const IconComponent = config.iconName === 'Wind' ? Wind :
+                                                  config.iconName === 'AlertTriangle' ? AlertTriangle :
+                                                  config.iconName === 'CloudRain' ? CloudRain :
+                                                  config.iconName === 'Flame' ? Flame :
+                                                  config.iconName === 'CloudSnow' ? CloudSnow : Zap;
+                            const isActive = visibleTabs.includes(key);
+                            const count = tabCounts[key] || 0;
+                            return (
+                                <button
+                                    key={key}
+                                    onClick={() => toggleTab(key)}
+                                    className={`flex items-center justify-between gap-1.5 py-2 px-2.5 rounded-xl border transition-all duration-200 active:scale-95 cursor-pointer text-left ${
+                                        isActive
+                                            ? `${config.bgColor} ${config.borderColor} ${config.textColor} shadow-[0_0_12px_rgba(255,255,255,0.02)]`
+                                            : 'bg-white/[0.02] border-white/[0.05] text-white/20 hover:text-white/40 hover:bg-white/[0.04] hover:border-white/10'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                        <IconComponent size={13} className="shrink-0" strokeWidth={2.5} />
+                                        <span className="text-[9px] font-black uppercase tracking-wider leading-none truncate">{config.label}</span>
+                                    </div>
+                                    {count > 0 && (
+                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none shrink-0 ${
+                                            isActive ? 'bg-white/15' : 'bg-white/5 text-white/20'
+                                        }`}>{count}</span>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -525,30 +569,17 @@ const MapComponent = () => {
                         {/* Incident Cards — Dark Glass */}
                         <div className="space-y-2">
                             {filteredIncidents.map(incident => {
-                                const slug = incident.category?.slug || '';
-                                const isWind = ['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug.includes(k));
-                                const isAccident = ['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k));
-                                const isFire = slug.includes('incendio') || slug.includes('siniestro');
+                                                                const slug = incident.category?.slug || '';
+                                const group = getIncidentGroup(slug);
+                                const config = CATEGORIES_CONFIG[group] || CATEGORIES_CONFIG.rayos;
                                 const isFatal = incident.is_fatal;
 
-                                let accentColor = 'rgba(255,255,255,0.12)';
-                                let glowColor = 'transparent';
-                                let accentText = 'text-white/40';
+                                let accentColor = config.accentColor;
+                                let glowColor = config.glowColor;
+                                let accentText = config.textColor;
                                 if (isFatal) {
                                     accentColor = 'rgba(239,68,68,0.25)';
                                     glowColor = '0 0 16px rgba(239,68,68,0.12)';
-                                    accentText = 'text-red-400';
-                                } else if (isWind) {
-                                    accentColor = 'rgba(234,179,8,0.18)';
-                                    glowColor = '0 0 14px rgba(234,179,8,0.08)';
-                                    accentText = 'text-yellow-400';
-                                } else if (isAccident) {
-                                    accentColor = 'rgba(37,99,235,0.18)';
-                                    glowColor = '0 0 14px rgba(37,99,235,0.08)';
-                                    accentText = 'text-blue-400';
-                                } else if (isFire) {
-                                    accentColor = 'rgba(220,38,38,0.18)';
-                                    glowColor = '0 0 14px rgba(220,38,38,0.08)';
                                     accentText = 'text-red-400';
                                 }
 
@@ -584,10 +615,10 @@ const MapComponent = () => {
                                                 {/* Color accent dot */}
                                                 <span
                                                     className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                                    style={{ background: accentColor.replace('0.18', '0.9').replace('0.25', '1') }}
+                                                    style={{ background: isFatal ? '#ef4444' : config.color }}
                                                 />
                                                 <span className={`text-[9px] font-black uppercase tracking-widest ${accentText}`}>
-                                                    {isFatal ? 'Fatal' : isWind ? 'Viento' : isAccident ? 'Tránsito' : isFire ? 'Incendio' : 'Evento'}
+                                                    {isFatal ? 'Fatal' : config.label}
                                                 </span>
                                                 {isFatal && <Skull size={9} className="text-red-400" />}
                                             </div>
@@ -649,7 +680,7 @@ const MapComponent = () => {
                         {/* Premium CTA */}
                         <button
                             className="w-full group relative overflow-hidden bg-gradient-to-br from-[#002D62]/80 to-[#001228]/90 border border-[#F28C28]/20 hover:border-[#F28C28]/40 p-3 rounded-xl shadow-xl shadow-black/40 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                            onClick={() => { window.location.href = '/dashboard_premium'; }}
+                            onClick={() => { window.location.href = '/data'; }}
                         >
                             <div className="absolute inset-0 bg-gradient-to-r from-[#F28C28]/0 via-[#F28C28]/5 to-[#F28C28]/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                             <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -664,15 +695,6 @@ const MapComponent = () => {
                                     Suscribirse
                                 </div>
                             </div>
-                        </button>
-
-                        {/* Public Dashboard CTA */}
-                        <button
-                            onClick={() => { window.location.href = '/dashboard_public'; }}
-                            className="w-full bg-white/[0.04] hover:bg-white/[0.08] text-white/50 hover:text-white/70 font-bold py-2 rounded-xl text-[10px] uppercase tracking-wider border border-white/[0.07] hover:border-white/15 transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                            <BarChart2 size={12} className="text-[#F28C28]/60" />
-                            Estadísticas Públicas
                         </button>
                     </div>
                 </div>
@@ -1055,11 +1077,11 @@ const MapComponent = () => {
                                             General (Todos)
                                         </button>
                                         <button
-                                            onClick={() => setActiveDashboardSection('traffic')}
-                                            className={`py-2 px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeDashboardSection === 'traffic' ? 'bg-[#2563EB] text-white shadow-lg shadow-[#2563EB]/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                                            onClick={() => setActiveDashboardSection('rain')}
+                                            className={`py-2 px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeDashboardSection === 'rain' ? 'bg-[#2563EB] text-white shadow-lg shadow-[#2563EB]/40' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                                         >
-                                            <Car size={13} />
-                                            Tránsito y Choques
+                                            <CloudRain size={13} />
+                                            Lluvias e Inundaciones
                                         </button>
                                         <button
                                             onClick={() => setActiveDashboardSection('fire')}
@@ -1105,27 +1127,27 @@ const MapComponent = () => {
                                                 </div>
                                             </>
                                         )}
-                                        {activeDashboardSection === 'traffic' && (
+                                        {activeDashboardSection === 'rain' && (
                                             <>
                                                 <div className="bg-[#111A2E] p-4 rounded-xl border border-[#2563EB]/20 text-left">
-                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Total Accidentes</span>
+                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Total Tormentas</span>
                                                     <h4 className="text-2xl font-black mt-1 text-[#2563EB]">12</h4>
                                                     <span className="text-[9px] text-amber-500 font-bold block mt-1">Últimos 30 días</span>
                                                 </div>
                                                 <div className="bg-[#111A2E] p-4 rounded-xl border border-[#2563EB]/20 text-left">
-                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Índice Fatalidad</span>
-                                                    <h4 className="text-2xl font-black mt-1 text-white">0%</h4>
-                                                    <span className="text-[9px] text-emerald-500 font-bold block mt-1">Sin fallecidos</span>
+                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Mayor Acumulado</span>
+                                                    <h4 className="text-2xl font-black mt-1 text-white">42 mm</h4>
+                                                    <span className="text-[9px] text-emerald-500 font-bold block mt-1">Zona microcentro</span>
                                                 </div>
                                                 <div className="bg-[#111A2E] p-4 rounded-xl border border-[#2563EB]/20 text-left">
-                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Horario Crítico</span>
-                                                    <h4 className="text-xl font-black mt-2 text-white truncate">18-20 hs</h4>
-                                                    <span className="text-[9px] text-gray-400 block mt-1">Retorno laboral</span>
+                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Zona Crítica</span>
+                                                    <h4 className="text-xl font-black mt-2 text-white truncate">Pocito / Rawson</h4>
+                                                    <span className="text-[9px] text-gray-400 block mt-1">Crecidas de agua</span>
                                                 </div>
                                                 <div className="bg-[#111A2E] p-4 rounded-xl border border-[#2563EB]/20 text-left">
-                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Ruta Conflictiva</span>
-                                                    <h4 className="text-xl font-black mt-2 text-white truncate">Ruta 40</h4>
-                                                    <span className="text-[9px] text-amber-400 font-bold block mt-1">Acceso Sur</span>
+                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Ruta Interrumpida</span>
+                                                    <h4 className="text-xl font-black mt-2 text-white truncate">Ruta 149</h4>
+                                                    <span className="text-[9px] text-amber-400 font-bold block mt-1">Paso a Calingasta</span>
                                                 </div>
                                             </>
                                         )}
@@ -1197,21 +1219,21 @@ const MapComponent = () => {
                                                     </div>
                                                 )}
 
-                                                {activeDashboardSection === 'traffic' && (
+                                                {activeDashboardSection === 'rain' && (
                                                     <div className="space-y-4">
-                                                        <h5 className="font-bold text-sm text-[#2563EB]">Siniestralidad Vial</h5>
+                                                        <h5 className="font-bold text-sm text-[#2563EB]">Tormentas e Inundaciones</h5>
                                                         <ul className="space-y-3 text-xs text-gray-300">
                                                             <li className="flex gap-2">
-                                                                <span className="text-[#2563EB] font-bold">🏍️</span>
-                                                                65% de los choques registrados involucran motociclistas.
+                                                                <span className="text-[#2563EB] font-bold">🌊</span>
+                                                                Las crecidas repentinas de ríos y arroyos cortan rutas de media montaña.
                                                             </li>
                                                             <li className="flex gap-2">
-                                                                <span className="text-[#2563EB] font-bold">🚦</span>
-                                                                Esquinas sin semáforo son responsables de 8 de cada 10 colisiones urbanas.
+                                                                <span className="text-[#2563EB] font-bold">⛈️</span>
+                                                                Las tormentas eléctricas y granizo afectan la producción agrícola local.
                                                             </li>
                                                             <li className="flex gap-2">
-                                                                <span className="text-[#2563EB] font-bold">🚨</span>
-                                                                Colisiones por alcance representan la tipología dominante en avenidas de alto flujo.
+                                                                <span className="text-[#2563EB] font-bold">💧</span>
+                                                                Zonas urbanas bajas registran anegamientos temporales por drenajes saturados.
                                                             </li>
                                                         </ul>
                                                     </div>
@@ -1271,7 +1293,7 @@ const MapComponent = () => {
                                         <div className="bg-[#111A2E] p-5 rounded-2xl border border-white/5 text-left md:col-span-2">
                                             <h4 className="text-sm font-bold mb-4">
                                                 {activeDashboardSection === 'general' && "Incidentes Totales por Semana (Últimos 30 días)"}
-                                                {activeDashboardSection === 'traffic' && "Volumen Horario de Colisiones Viales (Últimos 30 días)"}
+                                                {activeDashboardSection === 'rain' && "Frecuencia de Crecidas e Inundaciones por Período"}
                                                 {activeDashboardSection === 'fire' && "Focos Ígneos por Sub-categoría (Últimos 30 días)"}
                                                 {activeDashboardSection === 'wind' && "Intensidad de Viento en Ráfagas Máximas (km/h)"}
                                             </h4>
@@ -1288,11 +1310,11 @@ const MapComponent = () => {
                                                     </div>
                                                 ))}
 
-                                                {activeDashboardSection === 'traffic' && [
-                                                    { label: "Mañana", val: "25%", color: "bg-[#2563EB]" },
-                                                    { label: "Mediodía", val: "40%", color: "bg-[#2563EB]" },
-                                                    { label: "Tarde", val: "95%", color: "bg-[#2563EB]" },
-                                                    { label: "Noche", val: "30%", color: "bg-[#2563EB]" }
+                                                {activeDashboardSection === 'rain' && [
+                                                    { label: "Semana 1", val: "25%", color: "bg-[#2563EB]" },
+                                                    { label: "Semana 2", val: "40%", color: "bg-[#2563EB]" },
+                                                    { label: "Semana 3", val: "95%", color: "bg-[#2563EB]" },
+                                                    { label: "Semana 4", val: "30%", color: "bg-[#2563EB]" }
                                                 ].map((d, i) => (
                                                     <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
                                                         <div className={`w-full ${d.color} rounded-t-lg transition-all group-hover:brightness-110`} style={{ height: d.val }}></div>
