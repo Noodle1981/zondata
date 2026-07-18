@@ -102,4 +102,50 @@ class ScraperSourceCrudController extends CrudController
     {
         $this->setupCreateOperation();
     }
+
+    protected function setupShowOperation()
+    {
+        $this->setupListOperation();
+
+        CRUD::addColumn([
+            'name' => 'scrape_urls',
+            'label' => 'URLs de Ingesta',
+            'type' => 'html',
+            'value' => function($entry) {
+                return '<pre>' . e(json_encode($entry->scrape_urls, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) . '</pre>';
+            }
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'article_selector',
+            'label' => 'Selector de Artículos (Regex)',
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'fallback_context',
+            'label' => 'Contexto de Fallback',
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'custom_context',
+            'label' => 'Contexto Personalizado',
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'deep_fetch',
+            'label' => 'Descargar Cuerpo Completo',
+            'type' => 'boolean',
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'duplicate_check',
+            'label' => 'Evitar Duplicados',
+            'type' => 'boolean',
+        ]);
+        
+        CRUD::addColumn([
+            'name' => 'error_message',
+            'label' => 'Mensaje de Error',
+        ]);
+    }
 }
