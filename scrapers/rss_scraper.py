@@ -83,16 +83,31 @@ RULES = load_rules()
 # palabras, el artículo se descarta sin hacer deep fetch ni geocoding.
 # Deben ser ESPECÍFICAS al hecho (no genéricas como "tránsito" o "vial").
 
-# Viento / Zonda: palabras que indican daño concreto por viento
+# Viento / Zonda: palabras que indican daño concreto por viento y otros eventos climáticos
 CONTEXT_WIND = [
     # Fenómenos
-    "zonda", "viento zonda", "viento sur", "ráfagas", "vientos fuertes",
+    "zonda", "viento zonda", "viento sur", "llegó el frío", "frente frío", "ráfagas", "vientos fuertes",
     "tormenta de viento", "temporal de viento",
     # Daños concretos (también aplica sin contexto de viento explícito)
     "voló el techo", "volaron techos", "voló un techo", "techo volado",
     "árbol caído", "arboles caidos", "árboles caídos", "árbol cayó",
     "cables caídos", "cables cortados", "sin luz por viento",
     "voladura de techo", "voladuras de techo",
+    # Tormentas
+    "tormenta", "tormenta eléctrica", "granizo", "granizó", "lluvia torrencial", "lluvias fuertes",
+    # Inundaciones
+    "inundación", "inundó", "anegado", "anegamiento",
+    # Crecientes
+    "creciente", "crecida", "desbordó", "desborde del río", "quebrada crecida",
+    # Derrumbes
+    "derrumbe", "desprendimiento", "alud", "piedras en la ruta", "caída de rocas",
+    "corte de ruta", "ruta cortada por piedras", "ruta cortada por agua",
+    # Nevada / Helada
+    "nieve", "nevada", "nevó", "helada", "escarcha",
+    # Fuego climático
+    "incendio forestal", "hectáreas quemadas", "incendio de pastizales",
+    # Calor extremo / Sequía
+    "ola de calor", "sequía"
 ]
 
 # Accidentes de tránsito: palabras que indican el hecho vial específico
@@ -146,10 +161,10 @@ FATAL_KEYWORDS = [
 ]
 
 WIND_MAPPING = {
-    "arboles": ["árbol", "arbol", "ramas", "caída de árboles", "caida de arbol"],
-    "corte": ["corte de luz", "sin luz", "energía san juan", "transformador", "cables cortados"],
-    "incendio": ["incendio", "fuego", "bomberos", "pastizales"],
-    "techo": ["techo", "voladura", "chapa"]
+    "arboles-caidos": ["árbol", "arbol", "ramas", "caída de árboles", "caida de arbol"],
+    "corte-energia": ["corte de luz", "sin luz", "energía san juan", "transformador", "cables cortados"],
+    "incendio-pastizales": ["incendio", "fuego", "bomberos", "pastizales"],
+    "techo-volado": ["techo", "voladura", "chapa"]
 }
 
 ACCIDENT_MAPPING = {
@@ -161,7 +176,8 @@ ACCIDENT_MAPPING = {
 FIRE_MAPPING = {
     "incendio-vivienda": ["casa", "vivienda", "departamento", "edificio", "habitación"],
     "incendio-pastizales": ["pastizales", "campo", "lote", "baldío", "maleza"],
-    "incendio-vehiculo": ["auto", "camioneta", "camión", "vehículo", "moto", "trafic", "furgón", "furgon", "colectivo"]
+    "incendio-vehiculo": ["auto", "camioneta", "camión", "vehículo", "moto", "trafic", "furgón", "furgon", "colectivo"],
+    "incendio-forestal": ["bosque", "sierra", "cerro", "montaña", "forestal", "hectáreas", "hectareas"]
 }
 
 # Configuración Geográfica (San Juan)
@@ -702,7 +718,7 @@ def is_within_bounds(lat, lon):
 def extract_location_with_gemini(title, description, body_text):
     """
     Analiza la noticia con Gemini 2.5 Flash y extrae información estructurada:
-    location_query, is_approximate, is_fatal, category.
+    location_query, is_approximate, is_fatal, category, wind_cause, phenomenon_type, hectares_burned.
     """
     gemini_key = get_env_variable("GEMINI_API_KEY")
     if not gemini_key:
@@ -718,6 +734,11 @@ def extract_location_with_gemini(title, description, body_text):
     headers = {"Content-Type": "application/json"}
     
     prompt = f"""Analiza la siguiente noticia de la provincia de San Juan, Argentina, y extrae la información solicitada de forma estructurada.
+
+**Instrucción de Desambiguación Crítica para 'Zonda'**:
+- La palabra 'Zonda' puede referirse al viento ("viento Zonda", "ráfagas de Zonda", "Zonda activo") o al departamento/localidad ("en Zonda", "en el departamento Zonda", "vecinos de Zonda").
+- Si se refiere al viento Zonda, clasifícalo en `wind_cause = true` y selecciona la categoría climática correspondiente (por ejemplo: `arboles-caidos`, `techo-volado`, `corte-energia`, `incendio-pastizales`, etc.) y asigna `zonda` en `phenomenon_type`.
+- Si se menciona Zonda como el lugar geográfico del hecho, devuélvelo en `location_query` como 'Zonda, San Juan, Argentina' o el lugar específico dentro del departamento, pero no actives `wind_cause` a menos que también se mencione el viento Zonda como causa del incidente.
 
 Título: {title}
 Descripción: {description}
@@ -746,8 +767,29 @@ Cuerpo: {body_text}"""
                     },
                     "category": {
                         "type": "STRING",
-                        "enum": ["choque", "vuelco", "atropello", "incendio-vivienda", "incendio-pastizales", "incendio-vehiculo", "arboles", "corte", "techo", "incendio", "accidente", "desconocido"],
+                        "enum": [
+                            "arboles-caidos", "techo-volado", "corte-energia",
+                            "incendio-pastizales", "incendio-forestal", "incendio-vivienda", "incendio-vehiculo",
+                            "granizo", "tormenta-electrica", "inundacion-urbana",
+                            "creciente-rio", "creciente-quebrada", "corte-ruta-por-agua",
+                            "derrumbe-ruta", "desprendimiento-rocas", "alud",
+                            "nevada", "helada", "ola-de-calor", "accidente-climatico",
+                            "otro-climatico", "desconocido"
+                        ],
                         "description": "La categoría del incidente."
+                    },
+                    "wind_cause": {
+                        "type": "BOOLEAN",
+                        "description": "true si el viento (sea Zonda o Sur o ráfagas fuertes) causó el incidente. false en caso contrario."
+                    },
+                    "phenomenon_type": {
+                        "type": "STRING",
+                        "enum": ["zonda", "viento_sur", "tormenta", "creciente", "derrumbe", "otro_climatico", "ninguno"],
+                        "description": "El tipo de fenómeno climático asociado al incidente. Ej: 'zonda' si es viento zonda, 'viento_sur' si es viento sur, 'tormenta' si es lluvia/granizo/tormenta, 'creciente' si es crecida de río/arroyo/quebrada, 'derrumbe' si es desprendimiento de rocas/alud/derrumbe en ruta, 'otro_climatico' para otros."
+                    },
+                    "hectares_burned": {
+                        "type": "NUMBER",
+                        "description": "La cantidad de hectáreas quemadas si la noticia refiere a un incendio forestal o de pastizales y menciona explícitamente el número de hectáreas. Si no se especifica o no aplica, devolver -1."
                     },
                     "is_retrospective_or_historical": {
                         "type": "BOOLEAN",
@@ -793,6 +835,7 @@ Cuerpo: {body_text}"""
                 },
                 "required": [
                     "location_query", "is_approximate", "is_fatal", "category", 
+                    "wind_cause", "phenomenon_type", "hectares_burned",
                     "is_retrospective_or_historical", "victim_names",
                     "has_car", "has_pickup", "has_utility", "has_motorcycle", 
                     "has_truck", "has_bus", "has_pedestrian", "has_bicycle"
@@ -1257,6 +1300,7 @@ def classify_article_with_python_rules(title, description, body_text, rule=None)
     
     # VIENTO / ZONDA
     if any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_WIND):
+        detected_category = "otro-climatico"
         for slug, keywords in WIND_MAPPING.items():
             if any(has_keyword_match(text_to_search, kw) for kw in keywords):
                 detected_category = slug
@@ -1278,7 +1322,8 @@ def classify_article_with_python_rules(title, description, body_text, rule=None)
                     break
                     
     # ACCIDENTES
-    if not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_ACCIDENT):
+    enable_accident_scraping = get_env_variable("ENABLE_ACCIDENT_SCRAPING", "false").lower() == "true"
+    if enable_accident_scraping and not detected_category and any(has_keyword_match(title_desc_combined, word) for word in CONTEXT_ACCIDENT):
         is_armed_violence = any(x in text_to_search for x in [
             "balearon", "balear", "herido de bala", "herida de bala", "impactos de bala", 
             "recibio disparos", "recibió disparos", "tiros", "disparos", "apuñalaron", 
@@ -1417,11 +1462,25 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         return None
 
     # Si Gemini detecta una subcategoría específica válida, refinamos el resultado de Python
-    if gemini_res.get("category") and gemini_res["category"] not in ("desconocido", "desconocida", None):
-        if gemini_res["category"] in ["choque", "vuelco", "atropello", "incendio-vivienda", "incendio-pastizales", "incendio-vehiculo", "arboles", "corte", "techo", "incendio", "accidente"]:
+    valid_cats = [
+        "arboles-caidos", "techo-volado", "corte-energia",
+        "incendio-pastizales", "incendio-forestal", "incendio-vivienda", "incendio-vehiculo",
+        "granizo", "tormenta-electrica", "inundacion-urbana",
+        "creciente-rio", "creciente-quebrada", "corte-ruta-por-agua",
+        "derrumbe-ruta", "desprendimiento-rocas", "alud",
+        "nevada", "helada", "ola-de-calor", "accidente-climatico",
+        "otro-climatico", "desconocido",
+        "choque", "vuelco", "atropello", "accidente"
+    ]
+    if gemini_res and gemini_res.get("category") and gemini_res["category"] not in ("desconocido", "desconocida", None):
+        if gemini_res["category"] in valid_cats:
             detected_category = gemini_res["category"]
 
-    is_fatal = gemini_res.get("is_fatal", False)
+    is_fatal = gemini_res.get("is_fatal", False) if gemini_res else False
+    wind_cause = gemini_res.get("wind_cause", False) if gemini_res else False
+    phenomenon_type = gemini_res.get("phenomenon_type", "ninguno") if gemini_res else "ninguno"
+    raw_hectares = gemini_res.get("hectares_burned", -1) if gemini_res else -1
+    hectares_burned = None if raw_hectares == -1 else raw_hectares
     
     event_date = pub_date
     text_to_search = (title + " " + (description or "") + " " + (body_text or "")).lower()
@@ -1460,20 +1519,23 @@ def analyze_news(title, description, link, fuente_nombre="Noticias San Juan", ru
         "source": source,
         "location_type": loc_type,
         "is_fatal": is_fatal,
+        "wind_cause": wind_cause,
+        "phenomenon_type": phenomenon_type,
+        "hectares_burned": hectares_burned,
         "fuente_nombre": fuente_nombre,
         "fuente_url": link,
         "event_date": event_date.strftime("%Y-%m-%d %H:%M:%S"),
         "source_publish_date": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
         "verificado": False,
-        "victim_names": ", ".join(gemini_res.get("victim_names", [])) if gemini_res.get("victim_names") else None,
-        "has_car": gemini_res.get("has_car", False),
-        "has_pickup": gemini_res.get("has_pickup", False),
-        "has_utility": gemini_res.get("has_utility", False),
-        "has_motorcycle": gemini_res.get("has_motorcycle", False),
-        "has_truck": gemini_res.get("has_truck", False),
-        "has_bus": gemini_res.get("has_bus", False),
-        "has_pedestrian": gemini_res.get("has_pedestrian", False),
-        "has_bicycle": gemini_res.get("has_bicycle", False)
+        "victim_names": ", ".join(gemini_res.get("victim_names", [])) if (gemini_res and gemini_res.get("victim_names")) else None,
+        "has_car": gemini_res.get("has_car", False) if gemini_res else False,
+        "has_pickup": gemini_res.get("has_pickup", False) if gemini_res else False,
+        "has_utility": gemini_res.get("has_utility", False) if gemini_res else False,
+        "has_motorcycle": gemini_res.get("has_motorcycle", False) if gemini_res else False,
+        "has_truck": gemini_res.get("has_truck", False) if gemini_res else False,
+        "has_bus": gemini_res.get("has_bus", False) if gemini_res else False,
+        "has_pedestrian": gemini_res.get("has_pedestrian", False) if gemini_res else False,
+        "has_bicycle": gemini_res.get("has_bicycle", False) if gemini_res else False
     }
 
 
@@ -1570,6 +1632,18 @@ def process_queued_articles():
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if incident:
+                # Si está activado el enriquecimiento climático (Fase 2)
+                enable_climate = get_env_variable("ENABLE_CLIMATE_ENRICHMENT", "true").lower() == "true"
+                if enable_climate:
+                    try:
+                        from climate_enricher import enrich_incident_data
+                        print(f"[CLIMATE] Enriqueciendo datos climáticos para: '{incident['titulo'][:50]}...'")
+                        c_data = enrich_incident_data(incident["latitud"], incident["longitud"], incident["event_date"])
+                        incident.update(c_data)
+                        incident["climate_enriched"] = True
+                    except Exception as ce:
+                        print(f"[CLIMATE][ERROR] Falló enriquecimiento climático en caliente: {ce}")
+
                 # Si clasifica como incidente y se geocodifica, enviar a Laravel API
                 send_to_api(incident)
                 # Actualizar estado a 'processed'

@@ -1,23 +1,34 @@
-name: ZonData Incident Pipeline
+name: ZonData Climate Incident Pipeline
 
 workflows:
   news_monitor_ingest:
-    description: "Ingesta y pre-filtrado rápido de titulares sin llamadas a APIs de Google"
-    trigger: "Cron Schedule (Every 30 mins)"
+    description: "Ingesta y pre-filtrado de titulares enfocado en palabras clave del clima"
+    trigger: "Cron Schedule (Cada 30 minutos)"
     tasks:
       - run: python scrapers/rss_scraper.py --ingest-only
-      - action: "Evaluar título y guardar en raw_articles como queued o ignored"
+      - action: "Evalúa los títulos buscando coincidencia con vocabulario climático expandido (Zonda, tormentas, derrumbes, etc.)"
+      - action: "Filtra noticias viales puras e inscribe los artículos viables en raw_articles como queued o ignored"
 
   news_processor:
-    description: "Procesamiento diferido de la cola raw_articles (Llamadas a Gemini y Google Geocoding)"
-    trigger: "Cron Schedule (Every 30 mins, desfase de 5 mins)"
+    description: "Procesamiento de artículos en cola, geocodificación y enriquecimiento de datos"
+    trigger: "Cron Schedule (Cada 30 minutos, desfase de 5 minutos)"
     tasks:
       - run: python scrapers/rss_scraper.py --process-only
-      - action: "Extraer dirección, vehículos y víctimas con Gemini"
-      - action: "Geocodificar con Google Maps y enviar a Laravel /api/incidents"
+      - action: "Clasifica el incidente utilizando Gemini para extraer la geografía, el tipo de fenómeno y las hectáreas quemadas"
+      - action: "Ejecuta geocoding con Google Maps/Nominatim"
+      - action: "Invoca climate_enricher.py para obtener variables meteorológicas a la hora pico y resolver la fase ENSO de NOAA"
+      - action: "Envía el incidente enriquecido por POST a Laravel /api/incidents"
+
+  alert_dispatcher:
+    description: "Distribución de alertas tempranas personalizadas a suscriptores registrados"
+    trigger: "Evento de creación de incidente (IncidentController@store)"
+    tasks:
+      - action: "Dispara el Job SendClimateAlert en Laravel"
+      - action: "Cruza la ubicación (departamento) y el tipo de fenómeno con las preferencias de los suscriptores activos"
+      - action: "Genera el aviso inmediato y lo escribe en storage/logs/alerts.log (depuración) o despacha vía email/SMS"
 
   brand_compliance:
-    description: "Asegurar consistencia visual y tamaño de popups"
+    description: "Mantenimiento estético y visual del Mapa y Dashboard"
     checks:
-      - "Verificar que el popup no contenga descripción de texto plano"
-      - "Comprobar el correcto coloreado de las badges en MapComponent"
+      - "Verificar que los popups en el mapa no expongan texto plano, sino badges estructurados por severidad"
+      - "Asegurar que los gráficos e indicadores climáticos y el Heatmap estacional reflejen la paleta de colores corporativa"

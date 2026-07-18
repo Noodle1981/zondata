@@ -300,6 +300,18 @@ class IncidentController extends Controller
             'has_bus'        => 'nullable|boolean',
             'has_pedestrian' => 'nullable|boolean',
             'has_bicycle'    => 'nullable|boolean',
+            'phenomenon_type' => 'nullable|string|max:255',
+            'wind_cause'      => 'nullable|boolean',
+            'temp_c'          => 'nullable|numeric',
+            'humidity_pct'    => 'nullable|numeric',
+            'wind_speed_kmh'  => 'nullable|numeric',
+            'wind_direction_deg' => 'nullable|integer',
+            'precipitation_mm'=> 'nullable|numeric',
+            'uv_index'        => 'nullable|integer',
+            'weather_code'    => 'nullable|string|max:255',
+            'enso_phase'      => 'nullable|string|max:255',
+            'hectares_burned' => 'nullable|numeric',
+            'climate_enriched'=> 'nullable|boolean',
         ]);
 
         // Buscar o crear la categoría según la etiqueta
@@ -787,7 +799,22 @@ class IncidentController extends Controller
             'has_bicycle'    => $vehicles['has_bicycle'],
             'source_publish_date' => $validated['source_publish_date'] ?? now(),
             'reported_at'    => now(),
+            'phenomenon_type' => $validated['phenomenon_type'] ?? null,
+            'wind_cause'      => $validated['wind_cause'] ?? null,
+            'temp_c'          => $validated['temp_c'] ?? null,
+            'humidity_pct'    => $validated['humidity_pct'] ?? null,
+            'wind_speed_kmh'  => $validated['wind_speed_kmh'] ?? null,
+            'wind_direction_deg' => $validated['wind_direction_deg'] ?? null,
+            'precipitation_mm'=> $validated['precipitation_mm'] ?? null,
+            'uv_index'        => $validated['uv_index'] ?? null,
+            'weather_code'    => $validated['weather_code'] ?? null,
+            'enso_phase'      => $validated['enso_phase'] ?? null,
+            'hectares_burned' => $validated['hectares_burned'] ?? null,
+            'climate_enriched'=> $validated['climate_enriched'] ?? false,
         ]);
+
+        // Dispatch alert job
+        dispatch(new \App\Jobs\SendClimateAlert($incident));
 
         // Create notification if the new incident is fatal and from a past date
         if ($incident->is_fatal && \Carbon\Carbon::parse($incident->event_date)->isBefore(today())) {
@@ -919,6 +946,106 @@ class IncidentController extends Controller
         }
 
         return false;
+    }
+
+    public function getMonthlySummary(Request $request)
+    {
+        $year = $request->query('year', now()->year);
+
+        $incidents = Incident::whereYear('event_date', $year)
+            ->selectRaw("strftime('%m', event_date) as month, phenomenon_type, count(*) as count, avg(wind_speed_kmh) as avg_wind_speed")
+            ->groupBy('month', 'phenomenon_type')
+            ->get();
+
+        return response()->json($incidents);
+    }
+
+    public function getSeasonalHeatmap(Request $request)
+    {
+        $year = $request->query('year', now()->year);
+
+        $data = Incident::whereYear('event_date', $year)
+            ->selectRaw("strftime('%m', event_date) as month, strftime('%d', event_date) as day, count(*) as count")
+            ->groupBy('month', 'day')
+            ->get();
+
+        return response()->json($data);
+    }
+
+    public function getClimateCorrelation(Request $request)
+    {
+        $data = Incident::selectRaw("date(event_date) as date, avg(wind_speed_kmh) as avg_wind, avg(temp_c) as avg_temp, avg(humidity_pct) as avg_humidity, count(*) as incident_count")
+            ->whereNotNull('event_date')
+            ->groupBy('date')
+            ->orderBy('date', 'desc')
+            ->limit(100)
+            ->get();
+
+        return response()->json($data);
+    }
+
+    public function getDepartmentRanking(Request $request)
+    {
+        $data = Incident::with('department')
+            ->selectRaw("department_id, phenomenon_type, count(*) as count")
+            ->whereNotNull('department_id')
+            ->groupBy('department_id', 'phenomenon_type')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'department_name' => $item->department->name ?? 'Desconocido',
+                    'phenomenon_type' => $item->phenomenon_type ?? 'ninguno',
+                    'count' => $item->count
+                ];
+            });
+
+        return response()->json($data);
+    }
+
+    public function getEnsoComparison(Request $request)
+    {
+        $data = Incident::selectRaw("enso_phase, count(*) as count")
+            ->groupBy('enso_phase')
+            ->get();
+
+        return response()->json($data);
+    }
+
+    public function getRouteIncidents(Request $request)
+    {
+        $data = Incident::where('road_type', 'Ruta')
+            ->selectRaw("road_name, phenomenon_type, count(*) as count")
+            ->whereNotNull('road_name')
+            ->groupBy('road_name', 'phenomenon_type')
+            ->orderBy('count', 'desc')
+            ->get();
+
+        return response()->json($data);
+    }
+
+    public function subscribeAlert(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'phone' => 'nullable|string',
+            'department_id' => 'nullable|exists:departments,id',
+            'phenomenon_type' => 'nullable|string',
+        ]);
+
+        $subscriber = \App\Models\AlertSubscriber::updateOrCreate(
+            ['email' => $validated['email']],
+            [
+                'phone' => $validated['phone'] ?? null,
+                'department_id' => $validated['department_id'] ?? null,
+                'phenomenon_type' => $validated['phenomenon_type'] ?? null,
+                'is_active' => true,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Suscripción de alerta guardada con éxito',
+            'subscriber' => $subscriber
+        ], 200);
     }
 }
 

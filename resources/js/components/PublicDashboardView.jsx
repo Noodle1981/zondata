@@ -5,7 +5,7 @@ import {
     Building2, Trees, Bike, Truck, Bus, Footprints, Layers, User,
     Gauge, CarFront, Home, Wheat, Store, Factory, Leaf, Zap, ZapOff,
     Flag, Skull, Briefcase, AlertCircle, Calendar, ChevronDown, RefreshCw,
-    TrendingDown, Minus, Heart, Clock, Info
+    TrendingDown, Minus, Heart, Clock, Info, Droplets, CloudRain, Snowflake
 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -22,8 +22,7 @@ const getCategoryType = (incident) => {
     const slug = incident.category?.slug || '';
     if (['choque', 'vuelco', 'atropello', 'accidente', 'transito'].some(k => slug.includes(k))) return 'traffic';
     if (slug.includes('incendio') || slug.includes('siniestro')) return 'fire';
-    if (['arboles', 'corte', 'techo', 'viento', 'zonda'].some(k => slug.includes(k))) return 'wind';
-    return 'other';
+    return 'wind'; // Todo lo demás es climático
 };
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -241,12 +240,13 @@ const PublicDashboardView = () => {
 
     const windCounts = useMemo(() => {
         const c = {
-            arboles:    windIncidents.filter(i => matchesWords(i, ['árbol caído','árbol cayó','arboles caidos','caída de árbol','caida de arbol'])).length,
-            ramas:      windIncidents.filter(i => matchesWords(i, ['rama','ramas','gajo']) && !matchesWords(i, ['árbol caído','arbol caido'])).length,
-            techos:     windIncidents.filter(i => matchesWords(i, ['techo','chapa','voladura','voló el techo','volaron techos'])).length,
-            cables:     windIncidents.filter(i => matchesWords(i, ['cable','cables','tendido eléctrico','poste','postes'])).length,
-            cortes:     windIncidents.filter(i => matchesWords(i, ['corte de luz','sin luz','apagón','apagon','sin servicio eléctrico'])).length,
-            carteleria: windIncidents.filter(i => matchesWords(i, ['cartel','semáforo','semaforo','letrero'])).length,
+            arboles:    windIncidents.filter(i => i.category?.slug === 'arboles-caidos' || matchesWords(i, ['árbol caído','árbol cayó','arboles caidos','caída de árbol','caida de arbol'])).length,
+            techos:     windIncidents.filter(i => i.category?.slug === 'techo-volado' || matchesWords(i, ['techo','chapa','voladura','voló el techo','volaron techos'])).length,
+            cortes:     windIncidents.filter(i => i.category?.slug === 'corte-energia' || matchesWords(i, ['corte de luz','sin luz','apagón','apagon','sin servicio eléctrico'])).length,
+            crecientes: windIncidents.filter(i => ['creciente-rio', 'creciente-quebrada', 'corte-ruta-por-agua'].includes(i.category?.slug) || matchesWords(i, ['creciente','crecida','desborde','río','rio','quebrada'])).length,
+            derrumbes:  windIncidents.filter(i => ['derrumbe-ruta', 'desprendimiento-rocas', 'alud'].includes(i.category?.slug) || matchesWords(i, ['derrumbe','desprendimiento','alud','caída de rocas','caida de rocas','ruta cortada por piedras'])).length,
+            tormentas:  windIncidents.filter(i => ['tormenta-electrica', 'granizo'].includes(i.category?.slug) || matchesWords(i, ['tormenta','granizo','rayo','lluvia torrencial'])).length,
+            nevadas:    windIncidents.filter(i => ['nevada', 'helada'].includes(i.category?.slug) || matchesWords(i, ['nieve','nevada','nevó','nevo','helada','escarcha'])).length,
         };
         c.otros = Math.max(0, windIncidents.length - Object.values(c).reduce((a,b) => a+b, 0));
         return c;
@@ -254,7 +254,16 @@ const PublicDashboardView = () => {
 
     const topWindDamage = useMemo(() => {
         if (windIncidents.length === 0) return '—';
-        const labels = { arboles:'Árboles caídos', ramas:'Ramas', techos:'Techos', cables:'Cables/Postes', cortes:'Cortes de luz', carteleria:'Cartelería', otros:'Otros' };
+        const labels = { 
+            arboles: 'Árboles Caídos', 
+            techos: 'Techos Volados', 
+            cortes: 'Cortes de Luz', 
+            crecientes: 'Crecientes de Ríos', 
+            derrumbes: 'Derrumbes en Rutas', 
+            tormentas: 'Tormentas/Granizo', 
+            nevadas: 'Nevadas/Heladas', 
+            otros: 'Otros Daños' 
+        };
         const top = Object.entries(windCounts).sort((a,b) => b[1]-a[1])[0];
         return labels[top[0]] || '—';
     }, [windCounts, windIncidents.length]);
@@ -589,13 +598,14 @@ const PublicDashboardView = () => {
                                     <p className="text-[11px] text-gray-500 -mt-3 mb-4">Clasificación automática por análisis de palabras clave en el texto de cada noticia.</p>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                                         {[
-                                            { icon: Trees,   label: 'Árboles Caídos',     count: windCounts.arboles },
-                                            { icon: Leaf,    label: 'Ramas Desprendidas', count: windCounts.ramas },
-                                            { icon: Home,    label: 'Techos Afectados',   count: windCounts.techos },
-                                            { icon: Zap,     label: 'Cables / Postes',    count: windCounts.cables },
-                                            { icon: ZapOff,  label: 'Cortes de Luz',      count: windCounts.cortes },
-                                            { icon: Flag,    label: 'Cartelería/Semáforos',count: windCounts.carteleria },
-                                            { icon: Layers,  label: 'Otros Daños',         count: windCounts.otros },
+                                            { icon: Trees,       label: 'Árboles Caídos',     count: windCounts.arboles },
+                                            { icon: Home,        label: 'Techos Volados',     count: windCounts.techos },
+                                            { icon: ZapOff,      label: 'Cortes de Energía',  count: windCounts.cortes },
+                                            { icon: Droplets,    label: 'Crecientes de Ríos', count: windCounts.crecientes },
+                                            { icon: MapPin,      label: 'Derrumbes en Rutas', count: windCounts.derrumbes },
+                                            { icon: CloudRain,   label: 'Tormentas / Granizo',count: windCounts.tormentas },
+                                            { icon: Snowflake,   label: 'Nevadas y Heladas',  count: windCounts.nevadas },
+                                            { icon: Layers,      label: 'Otros Daños',         count: windCounts.otros },
                                         ].map(w => <TypeCard key={w.label} {...w} accent="#F28C28" />)}
                                     </div>
                                 </SectionCard>

@@ -36,6 +36,18 @@ class Incident extends Model
         'has_bus',
         'has_pedestrian',
         'has_bicycle',
+        'phenomenon_type',
+        'wind_cause',
+        'temp_c',
+        'humidity_pct',
+        'wind_speed_kmh',
+        'wind_direction_deg',
+        'precipitation_mm',
+        'uv_index',
+        'weather_code',
+        'enso_phase',
+        'hectares_burned',
+        'climate_enriched',
     ];
 
     protected $casts = [
@@ -50,6 +62,15 @@ class Incident extends Model
         'has_bus' => 'boolean',
         'has_pedestrian' => 'boolean',
         'has_bicycle' => 'boolean',
+        'wind_cause' => 'boolean',
+        'climate_enriched' => 'boolean',
+        'temp_c' => 'float',
+        'humidity_pct' => 'float',
+        'wind_speed_kmh' => 'float',
+        'wind_direction_deg' => 'integer',
+        'precipitation_mm' => 'float',
+        'uv_index' => 'integer',
+        'hectares_burned' => 'float',
     ];
 
     public function category()

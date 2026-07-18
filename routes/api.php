@@ -14,6 +14,17 @@ Route::get('/incidents/summary', [IncidentController::class, 'getSummary']);
 Route::get('/incidents/notifications', [IncidentController::class, 'getNotifications']);
 Route::get('/incidents', [IncidentController::class, 'index']);
 Route::post('/incidents', [IncidentController::class, 'store']);
+Route::post('/alerts/subscribe', [IncidentController::class, 'subscribeAlert']);
+
+// ─── API de analíticas climáticas ─────────────────────────────────────────────
+Route::prefix('analytics')->group(function () {
+    Route::get('/monthly-summary', [IncidentController::class, 'getMonthlySummary']);
+    Route::get('/seasonal-heatmap', [IncidentController::class, 'getSeasonalHeatmap']);
+    Route::get('/climate-correlation', [IncidentController::class, 'getClimateCorrelation']);
+    Route::get('/department-ranking', [IncidentController::class, 'getDepartmentRanking']);
+    Route::get('/enso-comparison', [IncidentController::class, 'getEnsoComparison']);
+    Route::get('/route-incidents', [IncidentController::class, 'getRouteIncidents']);
+});
 
 // ─── Admin: Gestión de fuentes del scraper ───────────────────────────────────
 // GET    /api/admin/scraper-sources            → listar todas
